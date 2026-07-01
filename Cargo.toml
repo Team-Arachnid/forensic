@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/arachnid-core-cli",
+    "crates/arachnid-collect",
+    "crates/arachnid-netcap",
+    "crates/arachnid-evidence",
+    "crates/arachnid-report",
+]
+
