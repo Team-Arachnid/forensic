@@ -16,3 +16,17 @@ license = "MIT"
 repository = "https://github.com/arachnid-forensic/arachnid-core"
 authors = ["Arachnid Forensic"]
 
+[workspace.dependencies]
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.11"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+tracing = "0.1"
+
+arachnid-collect = { path = "crates/arachnid-collect", version = "0.1.0" }
+arachnid-evidence = { path = "crates/arachnid-evidence", version = "0.1.0" }
+arachnid-netcap = { path = "crates/arachnid-netcap", version = "0.1.0" }
+arachnid-report = { path = "crates/arachnid-report", version = "0.1.0" }
+
+# Single static binary per platform; see README "Build".
