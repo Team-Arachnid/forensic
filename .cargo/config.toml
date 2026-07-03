@@ -1,0 +1,15 @@
+# Static linking per platform. See README "Build" for what "static" does and does
+# not cover — the packet-capture library is the one honest exception.
+
+[target.x86_64-pc-windows-msvc]
+# Static CRT: no vcruntime redistributable on the examined host.
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static"]
