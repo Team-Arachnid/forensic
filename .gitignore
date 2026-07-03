@@ -1,0 +1,24 @@
+# Build output
+/target/
+**/*.rs.bk
+
+# Release artifacts: binaries, checksums and signatures are published, not committed
+/dist/
+/target/release-build/
+
+# Evidence containers must never be committed. They hold data collected from a
+# real host, which may include malware paths, credentials in command lines, and
+# captured traffic.
+/ev-*/
+/*.pcap
+/*.pcapng
+*.raw
+
+# Operator signing keys
+*.key
+!deny.toml
+
+# Local editor and tool state
+/.claude/
+.vscode/
+.idea/
