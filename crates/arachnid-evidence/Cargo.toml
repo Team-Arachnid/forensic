@@ -1,0 +1,10 @@
+[package]
+name = "arachnid-evidence"
+description = "Tamper-evident evidence container: hashing, Ed25519-signed chain-of-custody log, verification."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
