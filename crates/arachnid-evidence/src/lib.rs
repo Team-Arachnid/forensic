@@ -67,3 +67,30 @@ pub fn sha256_file(path: &Path) -> Result<(String, u64)> {
     }
     Ok((hex(&hasher.finalize()), total))
 }
+
+/// One line of the chain-of-custody log.
+///
+/// Field order is the serialization order and is part of the signed bytes; do not
+/// reorder without bumping [`SCHEMA_VERSION`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Record {
+    pub seq: u64,
+    /// Wall clock, RFC 3339 UTC. Subject to clock adjustment; pair with `mono_ns`.
+    pub ts_utc: String,
+    /// Nanoseconds since container creation, from a monotonic clock. Immune to
+    /// wall-clock adjustment, so relative ordering survives an NTP step.
+    pub mono_ns: u128,
+    pub operator: String,
+    /// `run_start` | `artifact` | `note` | `run_end`
+    pub event: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    /// SHA-256 of the previous log line's exact bytes; zeroes for the first record.
+    pub prev: String,
+}
