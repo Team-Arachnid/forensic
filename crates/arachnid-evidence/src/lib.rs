@@ -110,3 +110,16 @@ pub struct Manifest {
     /// fingerprint printed at the end of the run.
     pub public_key: String,
 }
+
+/// An open container. Writes are suppressed in `dry_run`, but hashing and the
+/// custody chain still run, so a dry run exercises the same code path.
+pub struct Container {
+    root: PathBuf,
+    key: SigningKey,
+    operator: String,
+    seq: u64,
+    prev: String,
+    started: Instant,
+    dry_run: bool,
+    manifest: Manifest,
+}
