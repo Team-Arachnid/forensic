@@ -185,4 +185,8 @@ impl Container {
         c.append("run_start", Some("manifest.json"), Some(mhash), None, None)?;
         Ok(c)
     }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
 }
