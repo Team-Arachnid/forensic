@@ -46,3 +46,24 @@ pub fn unhex(s: &str) -> Result<Vec<u8>> {
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).context("bad hex digit"))
         .collect()
 }
+
+pub fn sha256(bytes: &[u8]) -> String {
+    hex(&Sha256::digest(bytes))
+}
+
+/// Streaming hash, so a multi-gigabyte memory image never lands in RAM.
+pub fn sha256_file(path: &Path) -> Result<(String, u64)> {
+    let mut f = File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    let mut total = 0u64;
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+        total += n as u64;
+    }
+    Ok((hex(&hasher.finalize()), total))
+}
