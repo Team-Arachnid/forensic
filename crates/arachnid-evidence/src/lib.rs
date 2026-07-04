@@ -36,3 +36,13 @@ const GENESIS_PREV: &str = "0000000000000000000000000000000000000000000000000000
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
+
+pub fn unhex(s: &str) -> Result<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        bail!("odd-length hex string");
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).context("bad hex digit"))
+        .collect()
+}
