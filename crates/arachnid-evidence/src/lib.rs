@@ -123,3 +123,66 @@ pub struct Container {
     dry_run: bool,
     manifest: Manifest,
 }
+
+impl Container {
+    /// Create a new container. `signing_key` is an existing operator key, or
+    /// `None` to generate an ephemeral one for this run.
+    pub fn create(
+        root: &Path,
+        operator: &str,
+        signing_key: Option<SigningKey>,
+        dry_run: bool,
+    ) -> Result<Self> {
+        let key = match signing_key {
+            Some(k) => k,
+            None => {
+                let mut seed = [0u8; 32];
+                getrandom::fill(&mut seed).context("gather entropy for signing key")?;
+                SigningKey::from_bytes(&seed)
+            }
+        };
+        let mut id = [0u8; 16];
+        getrandom::fill(&mut id).context("gather entropy for container id")?;
+
+        let manifest = Manifest {
+            schema_version: SCHEMA_VERSION.into(),
+            tool: "arachnid-core".into(),
+            tool_version: env!("CARGO_PKG_VERSION").into(),
+            container_id: hex(&id),
+            created_utc: now_utc(),
+            operator: operator.into(),
+            host: hostname(),
+            platform: format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH),
+            public_key: hex(key.verifying_key().as_bytes()),
+        };
+
+        if !dry_run {
+            fs::create_dir_all(root.join("artifacts"))
+                .with_context(|| format!("create container at {}", root.display()))?;
+            if root.join("custody.log").exists() {
+                bail!(
+                    "{} already contains a custody log; refusing to append to an existing container",
+                    root.display()
+                );
+            }
+            fs::write(
+                root.join("manifest.json"),
+                serde_json::to_vec_pretty(&manifest)?,
+            )?;
+        }
+
+        let mut c = Container {
+            root: root.to_path_buf(),
+            key,
+            operator: operator.into(),
+            seq: 0,
+            prev: GENESIS_PREV.into(),
+            started: Instant::now(),
+            dry_run,
+            manifest,
+        };
+        let mhash = sha256(&serde_json::to_vec_pretty(&c.manifest)?);
+        c.append("run_start", Some("manifest.json"), Some(mhash), None, None)?;
+        Ok(c)
+    }
+}
