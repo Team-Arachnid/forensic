@@ -189,4 +189,8 @@ impl Container {
     pub fn root(&self) -> &Path {
         &self.root
     }
+
+    pub fn manifest(&self) -> &Manifest {
+        &self.manifest
+    }
 }
