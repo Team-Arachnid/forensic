@@ -94,3 +94,19 @@ pub struct Record {
     /// SHA-256 of the previous log line's exact bytes; zeroes for the first record.
     pub prev: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Manifest {
+    pub schema_version: String,
+    pub tool: String,
+    pub tool_version: String,
+    pub container_id: String,
+    pub created_utc: String,
+    pub operator: String,
+    pub host: String,
+    pub platform: String,
+    /// Ed25519 verifying key, hex. Trust this out-of-band: an attacker who can
+    /// rewrite the container can also swap this key and re-sign. Record the
+    /// fingerprint printed at the end of the run.
+    pub public_key: String,
+}
