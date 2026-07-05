@@ -199,4 +199,10 @@ impl Container {
     pub fn key_fingerprint(&self) -> String {
         sha256(self.key.verifying_key().as_bytes())
     }
+
+    /// Where an artifact must be written for [`Container::seal`] to pick it up.
+    /// Used by collectors that hand a path to an external writer (pcap, AVML).
+    pub fn artifact_path(&self, name: &str) -> PathBuf {
+        self.root.join("artifacts").join(name)
+    }
 }
