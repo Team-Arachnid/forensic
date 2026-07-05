@@ -193,4 +193,10 @@ impl Container {
     pub fn manifest(&self) -> &Manifest {
         &self.manifest
     }
+
+    /// Hex SHA-256 of the public key: the value an operator records out-of-band
+    /// so the container can be trusted later.
+    pub fn key_fingerprint(&self) -> String {
+        sha256(self.key.verifying_key().as_bytes())
+    }
 }
