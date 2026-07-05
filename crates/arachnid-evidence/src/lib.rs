@@ -225,4 +225,10 @@ impl Container {
         )?;
         Ok(digest)
     }
+
+    /// Serialize `value` as pretty JSON and store it as an artifact.
+    pub fn add_json<T: Serialize>(&mut self, name: &str, value: &T) -> Result<String> {
+        let bytes = serde_json::to_vec_pretty(value)?;
+        self.add_bytes(name, &bytes)
+    }
 }
