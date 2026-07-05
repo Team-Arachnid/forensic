@@ -304,3 +304,14 @@ impl Container {
         Ok(())
     }
 }
+
+#[derive(Debug, Serialize)]
+pub struct VerifyReport {
+    pub container: String,
+    pub schema_version: String,
+    pub public_key: String,
+    pub key_fingerprint: String,
+    pub records: u64,
+    pub artifacts_checked: u64,
+    pub problems: Vec<String>,
+}
