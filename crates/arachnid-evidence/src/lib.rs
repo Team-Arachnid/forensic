@@ -249,4 +249,9 @@ impl Container {
         )?;
         Ok(digest)
     }
+
+    /// Record something that happened but produced no artifact.
+    pub fn note(&mut self, detail: impl Into<String>) -> Result<()> {
+        self.append("note", None, None, None, Some(detail.into()))
+    }
 }
