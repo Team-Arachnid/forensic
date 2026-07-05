@@ -260,4 +260,47 @@ impl Container {
         self.append("run_end", None, None, None, None)?;
         Ok(())
     }
+
+    fn append(
+        &mut self,
+        event: &str,
+        name: Option<&str>,
+        digest: Option<String>,
+        size: Option<u64>,
+        detail: Option<String>,
+    ) -> Result<()> {
+        let rec = Record {
+            seq: self.seq,
+            ts_utc: now_utc(),
+            mono_ns: self.started.elapsed().as_nanos(),
+            operator: self.operator.clone(),
+            event: event.into(),
+            name: name.map(String::from),
+            sha256: digest,
+            size,
+            detail,
+            prev: self.prev.clone(),
+        };
+        let body = serde_json::to_vec(&rec)?;
+        let sig = self.key.sign(&body);
+        let mut line = Vec::with_capacity(body.len() + 130);
+        line.extend_from_slice(hex(&sig.to_bytes()).as_bytes());
+        line.push(b' ');
+        line.extend_from_slice(&body);
+
+        if !self.dry_run {
+            let mut f = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(self.root.join("custody.log"))?;
+            f.write_all(&line)?;
+            f.write_all(b"\n")?;
+            // Custody entries must survive a crash mid-collection.
+            f.sync_all()?;
+        }
+        self.prev = sha256(&line);
+        self.seq += 1;
+        tracing::debug!(seq = rec.seq, event, name, "custody record");
+        Ok(())
+    }
 }
