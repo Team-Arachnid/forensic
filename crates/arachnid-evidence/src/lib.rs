@@ -254,4 +254,10 @@ impl Container {
     pub fn note(&mut self, detail: impl Into<String>) -> Result<()> {
         self.append("note", None, None, None, Some(detail.into()))
     }
+
+    /// Close the run. Consumes the container so nothing can be appended after.
+    pub fn finish(mut self) -> Result<()> {
+        self.append("run_end", None, None, None, None)?;
+        Ok(())
+    }
 }
