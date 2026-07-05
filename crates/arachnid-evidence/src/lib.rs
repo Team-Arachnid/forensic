@@ -315,3 +315,9 @@ pub struct VerifyReport {
     pub artifacts_checked: u64,
     pub problems: Vec<String>,
 }
+
+impl VerifyReport {
+    pub fn ok(&self) -> bool {
+        self.problems.is_empty()
+    }
+}
