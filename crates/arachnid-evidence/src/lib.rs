@@ -205,4 +205,24 @@ impl Container {
     pub fn artifact_path(&self, name: &str) -> PathBuf {
         self.root.join("artifacts").join(name)
     }
+
+    /// Write `bytes` as an artifact and record its digest.
+    pub fn add_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<String> {
+        let digest = sha256(bytes);
+        if !self.dry_run {
+            let path = self.artifact_path(name);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))?;
+        }
+        self.append(
+            "artifact",
+            Some(name),
+            Some(digest.clone()),
+            Some(bytes.len() as u64),
+            None,
+        )?;
+        Ok(digest)
+    }
 }
