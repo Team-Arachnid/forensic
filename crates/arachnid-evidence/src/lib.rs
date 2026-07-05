@@ -231,4 +231,22 @@ impl Container {
         let bytes = serde_json::to_vec_pretty(value)?;
         self.add_bytes(name, &bytes)
     }
+
+    /// Record an artifact that was already written to [`Container::artifact_path`]
+    /// by something else (packet capture, memory acquisition subprocess).
+    pub fn seal(&mut self, name: &str) -> Result<String> {
+        if self.dry_run {
+            self.append("artifact", Some(name), None, None, Some("dry-run".into()))?;
+            return Ok(String::new());
+        }
+        let (digest, size) = sha256_file(&self.artifact_path(name))?;
+        self.append(
+            "artifact",
+            Some(name),
+            Some(digest.clone()),
+            Some(size),
+            None,
+        )?;
+        Ok(digest)
+    }
 }
