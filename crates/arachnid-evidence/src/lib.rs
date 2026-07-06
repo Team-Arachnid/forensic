@@ -443,3 +443,19 @@ pub fn verify(root: &Path) -> Result<VerifyReport> {
         problems,
     })
 }
+
+fn walk(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for entry in fs::read_dir(&d)? {
+            let p = entry?.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else {
+                out.push(p);
+            }
+        }
+    }
+    Ok(out)
+}
