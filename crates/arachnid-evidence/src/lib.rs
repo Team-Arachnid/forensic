@@ -473,3 +473,20 @@ pub fn load_signing_key(path: &Path) -> Result<SigningKey> {
     };
     Ok(SigningKey::from_bytes(&seed))
 }
+
+pub fn now_utc() -> String {
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into())
+}
+
+fn hostname() -> String {
+    // Read-only, no libc dependency, works on both target families.
+    std::env::var("HOSTNAME")
+        .ok()
+        .or_else(|| std::env::var("COMPUTERNAME").ok())
+        .or_else(|| fs::read_to_string("/proc/sys/kernel/hostname").ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".into())
+}
