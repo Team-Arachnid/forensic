@@ -459,3 +459,17 @@ fn walk(dir: &Path) -> Result<Vec<PathBuf>> {
     }
     Ok(out)
 }
+
+/// Load an Ed25519 signing key from a 32-byte seed file (raw or hex).
+pub fn load_signing_key(path: &Path) -> Result<SigningKey> {
+    let raw = fs::read(path).with_context(|| format!("read signing key {}", path.display()))?;
+    let seed: [u8; 32] = if raw.len() == 32 {
+        raw.try_into().unwrap()
+    } else {
+        let text = String::from_utf8(raw).context("signing key is neither 32 raw bytes nor hex")?;
+        unhex(text.trim())?
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("signing key must decode to 32 bytes"))?
+    };
+    Ok(SigningKey::from_bytes(&seed))
+}
