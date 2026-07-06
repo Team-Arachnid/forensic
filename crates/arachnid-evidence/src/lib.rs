@@ -510,4 +510,27 @@ mod tests {
         c.finish().unwrap();
         root
     }
+
+    #[test]
+    fn clean_container_verifies() {
+        let root = populated("clean");
+        let r = verify(&root).unwrap();
+        assert!(r.ok(), "unexpected problems: {:?}", r.problems);
+        assert_eq!(r.artifacts_checked, 2);
+        assert_eq!(r.records, 5); // run_start, 2 artifacts, note, run_end
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn modified_artifact_is_detected() {
+        let root = populated("modify");
+        fs::write(root.join("artifacts/a.txt"), b"hellp").unwrap();
+        let r = verify(&root).unwrap();
+        assert!(
+            r.problems.iter().any(|p| p.contains("content modified")),
+            "{:?}",
+            r.problems
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
 }
