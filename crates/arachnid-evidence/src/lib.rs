@@ -490,3 +490,24 @@ fn hostname() -> String {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "unknown".into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmpdir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("arachnid-test-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        d
+    }
+
+    fn populated(tag: &str) -> PathBuf {
+        let root = tmpdir(tag);
+        let mut c = Container::create(&root, "tester", None, false).unwrap();
+        c.add_bytes("a.txt", b"hello").unwrap();
+        c.add_json("b.json", &serde_json::json!({"k": 1})).unwrap();
+        c.note("collector finished").unwrap();
+        c.finish().unwrap();
+        root
+    }
+}
