@@ -321,3 +321,125 @@ impl VerifyReport {
         self.problems.is_empty()
     }
 }
+
+/// Re-verify a container from disk.
+///
+/// Deliberately independent of [`Container`]: it re-reads and re-hashes rather
+/// than sharing any writer state, so a bug in the collection path cannot make a
+/// broken container verify clean.
+pub fn verify(root: &Path) -> Result<VerifyReport> {
+    let manifest: Manifest = serde_json::from_slice(
+        &fs::read(root.join("manifest.json")).context("read manifest.json")?,
+    )
+    .context("parse manifest.json")?;
+
+    let pk_bytes: [u8; 32] = unhex(&manifest.public_key)?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("public_key is not 32 bytes"))?;
+    let vk = VerifyingKey::from_bytes(&pk_bytes).context("malformed public key")?;
+
+    let mut problems = Vec::new();
+    let mut expect_prev = GENESIS_PREV.to_string();
+    let mut expect_seq = 0u64;
+    let mut records = 0u64;
+    let mut artifacts_checked = 0u64;
+    let mut logged: Vec<String> = Vec::new();
+
+    let f = File::open(root.join("custody.log")).context("read custody.log")?;
+    for (i, line) in BufReader::new(f).lines().enumerate() {
+        let line = line?;
+        let raw = line.as_bytes();
+        records += 1;
+
+        let Some(sp) = raw.iter().position(|&b| b == b' ') else {
+            problems.push(format!("line {}: malformed, no signature separator", i + 1));
+            continue;
+        };
+        let (sig_hex, body) = (&line[..sp], &raw[sp + 1..]);
+
+        match unhex(sig_hex)
+            .ok()
+            .and_then(|b| <[u8; 64]>::try_from(b).ok())
+        {
+            Some(sb) if vk.verify(body, &Signature::from_bytes(&sb)).is_ok() => {}
+            _ => problems.push(format!("line {}: signature does not verify", i + 1)),
+        }
+
+        let rec: Record = match serde_json::from_slice(body) {
+            Ok(r) => r,
+            Err(e) => {
+                problems.push(format!("line {}: unparseable record: {e}", i + 1));
+                continue;
+            }
+        };
+        if rec.seq != expect_seq {
+            problems.push(format!(
+                "line {}: sequence {} out of order, expected {}",
+                i + 1,
+                rec.seq,
+                expect_seq
+            ));
+        }
+        if rec.prev != expect_prev {
+            problems.push(format!(
+                "line {}: hash chain broken (record removed, reordered, or edited)",
+                i + 1
+            ));
+        }
+        expect_prev = sha256(raw);
+        expect_seq = rec.seq + 1;
+
+        if rec.event == "artifact" {
+            let Some(name) = rec.name.clone() else {
+                problems.push(format!("line {}: artifact record without a name", i + 1));
+                continue;
+            };
+            logged.push(name.clone());
+            let Some(want) = rec.sha256.as_deref() else {
+                continue; // dry-run placeholder; nothing was written
+            };
+            let path = root.join("artifacts").join(&name);
+            match sha256_file(&path) {
+                Ok((got, size)) => {
+                    artifacts_checked += 1;
+                    if got != want {
+                        problems.push(format!(
+                            "artifact {name}: content modified since collection"
+                        ));
+                    }
+                    if rec.size.is_some_and(|s| s != size) {
+                        problems.push(format!("artifact {name}: size differs from record"));
+                    }
+                }
+                Err(_) => problems.push(format!("artifact {name}: missing")),
+            }
+        }
+    }
+
+    // A file nobody logged is as much a tamper signal as a modified one.
+    let adir = root.join("artifacts");
+    if adir.is_dir() {
+        for entry in walk(&adir)? {
+            let rel = entry
+                .strip_prefix(&adir)
+                .unwrap_or(&entry)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if !logged.contains(&rel) {
+                problems.push(format!(
+                    "artifact {rel}: present on disk but not in custody log"
+                ));
+            }
+        }
+    }
+
+    Ok(VerifyReport {
+        container: root.display().to_string(),
+        schema_version: manifest.schema_version,
+        key_fingerprint: sha256(&pk_bytes),
+        public_key: manifest.public_key,
+        records,
+        artifacts_checked,
+        problems,
+    })
+}
