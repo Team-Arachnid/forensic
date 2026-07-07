@@ -1,0 +1,10 @@
+[package]
+name = "arachnid-collect"
+description = "Read-only volatile data collectors: processes, network state, sessions, kernel modules, persistence."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
