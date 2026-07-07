@@ -599,4 +599,55 @@ mod tests {
         );
         fs::remove_dir_all(&root).unwrap();
     }
+
+    #[test]
+    fn a_swapped_public_key_is_an_integrity_problem_not_an_error() {
+        // Re-signing the whole log under an attacker key is the limit of what
+        // tamper-evidence can catch without an out-of-band fingerprint, but a key
+        // that is merely *broken* must still surface as a failed verification
+        // rather than as an unreadable container.
+        let root = populated("badkey");
+        let mut m: serde_json::Value =
+            serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+        m["public_key"] = serde_json::json!("ab".repeat(32));
+        fs::write(
+            root.join("manifest.json"),
+            serde_json::to_vec_pretty(&m).unwrap(),
+        )
+        .unwrap();
+
+        let r = verify(&root).expect("a bad key must not abort verification");
+        assert!(!r.ok());
+        assert!(
+            r.problems.iter().any(|p| p.contains("public_key")),
+            "{:?}",
+            r.problems
+        );
+        // Artifacts are still checked, so the report says what else is intact.
+        assert_eq!(r.artifacts_checked, 2);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_truncated_public_key_is_reported() {
+        let root = populated("shortkey");
+        let mut m: serde_json::Value =
+            serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+        m["public_key"] = serde_json::json!("abcd");
+        fs::write(
+            root.join("manifest.json"),
+            serde_json::to_vec_pretty(&m).unwrap(),
+        )
+        .unwrap();
+
+        let r = verify(&root).unwrap();
+        assert!(
+            r.problems
+                .iter()
+                .any(|p| p.contains("32 hex-encoded bytes")),
+            "{:?}",
+            r.problems
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
 }
