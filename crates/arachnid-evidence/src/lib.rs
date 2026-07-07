@@ -650,4 +650,19 @@ mod tests {
         );
         fs::remove_dir_all(&root).unwrap();
     }
+
+    #[test]
+    fn dry_run_writes_nothing() {
+        let root = tmpdir("dry");
+        let mut c = Container::create(&root, "tester", None, true).unwrap();
+        c.add_bytes("a.txt", b"hello").unwrap();
+        c.finish().unwrap();
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn hex_roundtrips() {
+        assert_eq!(unhex(&hex(b"\x00\xff\x10")).unwrap(), b"\x00\xff\x10");
+        assert!(unhex("xyz").is_err());
+    }
 }
