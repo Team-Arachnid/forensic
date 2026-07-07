@@ -533,4 +533,30 @@ mod tests {
         );
         fs::remove_dir_all(&root).unwrap();
     }
+
+    #[test]
+    fn deleted_artifact_is_detected() {
+        let root = populated("delete");
+        fs::remove_file(root.join("artifacts/a.txt")).unwrap();
+        let r = verify(&root).unwrap();
+        assert!(
+            r.problems.iter().any(|p| p.contains("missing")),
+            "{:?}",
+            r.problems
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn planted_artifact_is_detected() {
+        let root = populated("plant");
+        fs::write(root.join("artifacts/evil.txt"), b"x").unwrap();
+        let r = verify(&root).unwrap();
+        assert!(
+            r.problems.iter().any(|p| p.contains("not in custody log")),
+            "{:?}",
+            r.problems
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
 }
