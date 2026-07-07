@@ -559,4 +559,44 @@ mod tests {
         );
         fs::remove_dir_all(&root).unwrap();
     }
+
+    #[test]
+    fn removed_log_line_breaks_the_chain() {
+        let root = populated("chain");
+        let log = fs::read_to_string(root.join("custody.log")).unwrap();
+        let kept: Vec<&str> = log
+            .lines()
+            .enumerate()
+            .filter(|(i, _)| *i != 2)
+            .map(|(_, l)| l)
+            .collect();
+        fs::write(root.join("custody.log"), kept.join("\n") + "\n").unwrap();
+        let r = verify(&root).unwrap();
+        assert!(
+            r.problems.iter().any(|p| p.contains("hash chain broken")),
+            "{:?}",
+            r.problems
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn edited_log_line_breaks_its_signature() {
+        let root = populated("sig");
+        let log = fs::read_to_string(root.join("custody.log")).unwrap();
+        fs::write(
+            root.join("custody.log"),
+            log.replace("collector finished", "collector finishee"),
+        )
+        .unwrap();
+        let r = verify(&root).unwrap();
+        assert!(
+            r.problems
+                .iter()
+                .any(|p| p.contains("signature does not verify")),
+            "{:?}",
+            r.problems
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
 }
