@@ -8,3 +8,13 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+anyhow.workspace = true
+arachnid-evidence.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tracing.workspace = true
+netstat2 = "0.11"
+sysinfo = { version = "0.39", default-features = false, features = ["system", "user"] }
+
