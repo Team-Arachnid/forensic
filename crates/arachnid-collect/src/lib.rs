@@ -65,3 +65,13 @@ pub struct Connection {
     /// Resolved from `pids` against the process table for analyst readability.
     pub process_name: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Session {
+    pub user: String,
+    pub terminal: Option<String>,
+    pub remote_host: Option<String>,
+    pub login_time: Option<String>,
+    pub session_id: Option<String>,
+    pub state: Option<String>,
+}
