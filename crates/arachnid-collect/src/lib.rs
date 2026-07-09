@@ -52,3 +52,16 @@ pub struct Process {
     /// Distinct file-backed executable mappings: shared libraries and injected images.
     pub loaded_modules: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Connection {
+    pub protocol: String,
+    pub local_addr: String,
+    pub local_port: u16,
+    pub remote_addr: Option<String>,
+    pub remote_port: Option<u16>,
+    pub state: String,
+    pub pids: Vec<u32>,
+    /// Resolved from `pids` against the process table for analyst readability.
+    pub process_name: Option<String>,
+}
