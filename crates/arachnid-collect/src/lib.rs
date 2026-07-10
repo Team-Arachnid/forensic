@@ -110,3 +110,17 @@ pub struct Collection {
     /// What could not be collected, and why. Absence of evidence is evidence.
     pub warnings: Vec<String>,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct Options {
+    /// Hash on-disk process binaries. Costs I/O proportional to distinct images.
+    pub hash_binaries: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            hash_binaries: true,
+        }
+    }
+}
