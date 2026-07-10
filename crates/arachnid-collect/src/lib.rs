@@ -75,3 +75,13 @@ pub struct Session {
     pub session_id: Option<String>,
     pub state: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KernelModule {
+    pub name: String,
+    pub size: Option<u64>,
+    pub path: Option<String>,
+    pub sha256: Option<String>,
+    /// Linux: modules that depend on this one. Windows: unused.
+    pub used_by: Vec<String>,
+}
