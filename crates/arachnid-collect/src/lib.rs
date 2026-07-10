@@ -99,3 +99,14 @@ pub struct PersistenceItem {
     /// SHA-256 of the file backing the entry, where resolvable.
     pub sha256: Option<String>,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Collection {
+    pub processes: Vec<Process>,
+    pub connections: Vec<Connection>,
+    pub sessions: Vec<Session>,
+    pub kernel_modules: Vec<KernelModule>,
+    pub persistence: Vec<PersistenceItem>,
+    /// What could not be collected, and why. Absence of evidence is evidence.
+    pub warnings: Vec<String>,
+}
