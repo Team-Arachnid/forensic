@@ -85,3 +85,17 @@ pub struct KernelModule {
     /// Linux: modules that depend on this one. Windows: unused.
     pub used_by: Vec<String>,
 }
+
+/// One enumerated persistence location. Recorded, never modified.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistenceItem {
+    /// `registry_run` | `scheduled_task` | `systemd` | `cron` | `launch_agent` | `autostart` | `rc_local`
+    pub kind: String,
+    /// Registry key, unit path, crontab path — where the entry lives.
+    pub location: String,
+    pub name: String,
+    /// Command or target the entry executes, where one is parseable.
+    pub value: Option<String>,
+    /// SHA-256 of the file backing the entry, where resolvable.
+    pub sha256: Option<String>,
+}
