@@ -362,3 +362,37 @@ pub fn acquire_memory(
         stderr_tail,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn processes_include_this_one() {
+        let procs = collect_processes(Options {
+            hash_binaries: false,
+        })
+        .unwrap();
+        let me = std::process::id();
+        assert!(
+            procs.iter().any(|p| p.pid == me),
+            "own pid {me} not in process list"
+        );
+        assert!(
+            procs.iter().all(|p| p.parent_pid != Some(p.pid)),
+            "process is its own parent"
+        );
+    }
+
+    #[test]
+    fn connections_enumerate_without_privilege() {
+        // Ports vary by host, so assert shape rather than content.
+        let conns = collect_connections(&[]).unwrap();
+        for c in &conns {
+            assert!(matches!(
+                c.protocol.as_str(),
+                "tcp" | "tcp6" | "udp" | "udp6"
+            ));
+        }
+    }
+}
