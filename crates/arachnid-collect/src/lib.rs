@@ -124,3 +124,34 @@ impl Default for Options {
         }
     }
 }
+
+/// Run every collector. Individual failures become warnings, not an aborted run.
+pub fn collect_all(opts: Options) -> Collection {
+    let mut c = Collection::default();
+    let warn = |what: &str, e: anyhow::Error| {
+        tracing::warn!(collector = what, error = %e, "collector failed");
+        format!("{what}: {e:#}")
+    };
+
+    match collect_processes(opts) {
+        Ok(v) => c.processes = v,
+        Err(e) => c.warnings.push(warn("processes", e)),
+    }
+    match collect_connections(&c.processes) {
+        Ok(v) => c.connections = v,
+        Err(e) => c.warnings.push(warn("connections", e)),
+    }
+    match sys::sessions() {
+        Ok(v) => c.sessions = v,
+        Err(e) => c.warnings.push(warn("sessions", e)),
+    }
+    match sys::kernel_modules() {
+        Ok(v) => c.kernel_modules = v,
+        Err(e) => c.warnings.push(warn("kernel_modules", e)),
+    }
+    match sys::persistence() {
+        Ok(v) => c.persistence = v,
+        Err(e) => c.warnings.push(warn("persistence", e)),
+    }
+    c
+}
