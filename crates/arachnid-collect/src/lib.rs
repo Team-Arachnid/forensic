@@ -395,4 +395,28 @@ mod tests {
             ));
         }
     }
+
+    #[test]
+    fn connections_resolve_process_names() {
+        let procs = collect_processes(Options {
+            hash_binaries: false,
+        })
+        .unwrap();
+        let conns = collect_connections(&procs).unwrap();
+        for c in &conns {
+            if c.process_name.is_some() {
+                assert!(!c.pids.is_empty(), "named connection with no pid");
+            }
+        }
+    }
+
+    #[test]
+    fn collect_all_never_panics_and_reports_gaps() {
+        let c = collect_all(Options {
+            hash_binaries: false,
+        });
+        assert!(!c.processes.is_empty());
+        // Warnings are the contract for a degraded run; they must be readable.
+        assert!(c.warnings.iter().all(|w| w.contains(':')));
+    }
 }
