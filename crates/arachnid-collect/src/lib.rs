@@ -290,3 +290,75 @@ pub struct MemoryAcquisition {
     pub exit_code: Option<i32>,
     pub stderr_tail: String,
 }
+
+/// Acquire physical memory by invoking an external, vetted acquisition tool
+/// (AVML on Linux, WinPmem on Windows).
+///
+/// This tool deliberately ships no kernel-mode memory driver of its own: a custom
+/// driver is a kernel attack surface on the very host under investigation, and it
+/// would not carry the review history that AVML and WinPmem already have.
+///
+/// `expected_sha256` is required. The acquisition tool runs with the operator's
+/// privilege on a host that may already be compromised, so it is hash-pinned:
+/// a swapped binary aborts the run before execution rather than being recorded
+/// after the fact.
+pub fn acquire_memory(
+    tool: &Path,
+    expected_sha256: &str,
+    output: &Path,
+    extra_args: &[String],
+) -> Result<MemoryAcquisition> {
+    let (actual, _) = arachnid_evidence::sha256_file(tool)
+        .with_context(|| format!("hash acquisition tool {}", tool.display()))?;
+    if !actual.eq_ignore_ascii_case(expected_sha256.trim()) {
+        bail!(
+            "acquisition tool hash mismatch for {}: expected {}, found {}. \
+             Refusing to execute an unverified tool.",
+            tool.display(),
+            expected_sha256.trim(),
+            actual
+        );
+    }
+
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // AVML and WinPmem share the shape `<tool> [args] <output-path>`.
+    let mut args: Vec<String> = extra_args.to_vec();
+    args.push(output.display().to_string());
+
+    let started_utc = arachnid_evidence::now_utc();
+    tracing::info!(tool = %tool.display(), output = %output.display(), "invoking memory acquisition tool");
+    let out = Command::new(tool)
+        .args(&args)
+        .output()
+        .with_context(|| format!("execute {}", tool.display()))?;
+    let finished_utc = arachnid_evidence::now_utc();
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stderr_tail: String = stderr.lines().rev().take(20).collect::<Vec<_>>().join("\n");
+
+    if !out.status.success() {
+        bail!(
+            "{} exited with {:?}: {}",
+            tool.display(),
+            out.status.code(),
+            stderr_tail
+        );
+    }
+
+    Ok(MemoryAcquisition {
+        tool: tool.display().to_string(),
+        tool_sha256: actual,
+        args,
+        output_artifact: output
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        started_utc,
+        finished_utc,
+        exit_code: out.status.code(),
+        stderr_tail,
+    })
+}
