@@ -419,4 +419,18 @@ mod tests {
         // Warnings are the contract for a degraded run; they must be readable.
         assert!(c.warnings.iter().all(|w| w.contains(':')));
     }
+
+    #[test]
+    fn memory_acquisition_rejects_a_hash_mismatch() {
+        let fake = std::env::temp_dir().join(format!("arachnid-fake-tool-{}", std::process::id()));
+        std::fs::write(&fake, b"not really avml").unwrap();
+        let err = acquire_memory(&fake, &"0".repeat(64), Path::new("/dev/null"), &[]).unwrap_err();
+        assert!(format!("{err:#}").contains("hash mismatch"), "{err:#}");
+        std::fs::remove_file(&fake).unwrap();
+    }
+
+    #[test]
+    fn hash_file_opt_tolerates_missing_files() {
+        assert!(hash_file_opt(Path::new("/nonexistent/arachnid")).is_none());
+    }
 }
