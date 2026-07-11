@@ -207,3 +207,64 @@ pub fn collect_processes(opts: Options) -> Result<Vec<Process>> {
     out.sort_by_key(|p| p.pid);
     Ok(out)
 }
+
+/// Open sockets mapped to owning processes. `processes` is used only to attach a
+/// readable name to each PID; pass an empty slice to skip that.
+pub fn collect_connections(processes: &[Process]) -> Result<Vec<Connection>> {
+    use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
+
+    let names: std::collections::HashMap<u32, &str> =
+        processes.iter().map(|p| (p.pid, p.name.as_str())).collect();
+
+    let sockets = get_sockets_info(
+        AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6,
+        ProtocolFlags::TCP | ProtocolFlags::UDP,
+    )
+    .context("enumerate sockets")?;
+
+    let mut out: Vec<Connection> = sockets
+        .into_iter()
+        .map(|s| {
+            let pids = s.associated_pids.clone();
+            let process_name = pids
+                .iter()
+                .find_map(|p| names.get(p).map(|n| n.to_string()));
+            match s.protocol_socket_info {
+                ProtocolSocketInfo::Tcp(t) => Connection {
+                    protocol: if t.local_addr.is_ipv6() {
+                        "tcp6"
+                    } else {
+                        "tcp"
+                    }
+                    .into(),
+                    local_addr: t.local_addr.to_string(),
+                    local_port: t.local_port,
+                    remote_addr: Some(t.remote_addr.to_string()),
+                    remote_port: Some(t.remote_port),
+                    state: t.state.to_string(),
+                    pids,
+                    process_name,
+                },
+                ProtocolSocketInfo::Udp(u) => Connection {
+                    protocol: if u.local_addr.is_ipv6() {
+                        "udp6"
+                    } else {
+                        "udp"
+                    }
+                    .into(),
+                    local_addr: u.local_addr.to_string(),
+                    local_port: u.local_port,
+                    remote_addr: None,
+                    remote_port: None,
+                    // UDP is connectionless; netstat2 reports no state for it.
+                    state: "STATELESS".into(),
+                    pids,
+                    process_name,
+                },
+            }
+        })
+        .collect();
+
+    out.sort_by(|a, b| (&a.protocol, a.local_port).cmp(&(&b.protocol, b.local_port)));
+    Ok(out)
+}
