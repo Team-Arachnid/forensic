@@ -268,3 +268,25 @@ pub fn collect_connections(processes: &[Process]) -> Result<Vec<Connection>> {
     out.sort_by(|a, b| (&a.protocol, a.local_port).cmp(&(&b.protocol, b.local_port)));
     Ok(out)
 }
+
+/// SHA-256 of a file, or `None` if unreadable or implausibly large.
+/// Collectors never fail a run over one unreadable file.
+pub(crate) fn hash_file_opt(path: &Path) -> Option<String> {
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_BYTES {
+        return None;
+    }
+    arachnid_evidence::sha256_file(path).ok().map(|(h, _)| h)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryAcquisition {
+    pub tool: String,
+    pub tool_sha256: String,
+    pub args: Vec<String>,
+    pub output_artifact: String,
+    pub started_utc: String,
+    pub finished_utc: String,
+    pub exit_code: Option<i32>,
+    pub stderr_tail: String,
+}
