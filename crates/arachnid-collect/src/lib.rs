@@ -155,3 +155,55 @@ pub fn collect_all(opts: Options) -> Collection {
     }
     c
 }
+
+pub fn collect_processes(opts: Options) -> Result<Vec<Process>> {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, Users};
+
+    let mut sysi = System::new();
+    sysi.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::everything(),
+    );
+    let users = Users::new_with_refreshed_list();
+
+    // One image is usually mapped by many processes; hash each path once.
+    let mut hashes: std::collections::HashMap<PathBuf, Option<String>> = Default::default();
+
+    let mut out: Vec<Process> = sysi
+        .processes()
+        .values()
+        .map(|p| {
+            let exe = p.exe().map(Path::to_path_buf);
+            let exe_sha256 = match (opts.hash_binaries, &exe) {
+                (true, Some(path)) => hashes
+                    .entry(path.clone())
+                    .or_insert_with(|| hash_file_opt(path))
+                    .clone(),
+                _ => None,
+            };
+            Process {
+                pid: p.pid().as_u32(),
+                parent_pid: p.parent().map(|p| p.as_u32()),
+                name: p.name().to_string_lossy().into_owned(),
+                cmdline: p
+                    .cmd()
+                    .iter()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .collect(),
+                exe: exe.as_ref().map(|p| p.display().to_string()),
+                exe_sha256,
+                user: p
+                    .user_id()
+                    .and_then(|uid| users.get_user_by_id(uid))
+                    .map(|u| u.name().to_string()),
+                start_time: Some(p.start_time()),
+                cwd: p.cwd().map(|p| p.display().to_string()),
+                loaded_modules: sys::loaded_modules(p.pid().as_u32()).unwrap_or_default(),
+            }
+        })
+        .collect();
+
+    out.sort_by_key(|p| p.pid);
+    Ok(out)
+}
