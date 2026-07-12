@@ -133,3 +133,41 @@ pub fn kernel_modules() -> Result<Vec<KernelModule>> {
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
 }
+
+/// Locate a module's `.ko` under `/lib/modules/<release>`. Modules loaded from
+/// an unusual path (a real finding) simply resolve to `None`.
+fn find_module_file(name: &str, release: &str) -> Option<PathBuf> {
+    let root = PathBuf::from("/lib/modules").join(release);
+    if !root.is_dir() {
+        return None;
+    }
+    let wanted: Vec<String> = ["ko", "ko.xz", "ko.zst", "ko.gz"]
+        .iter()
+        // Module names normalise '-' to '_'; filenames may use either.
+        .flat_map(|ext| {
+            [
+                format!("{name}.{ext}"),
+                format!("{}.{ext}", name.replace('_', "-")),
+            ]
+        })
+        .collect();
+
+    let mut stack = vec![root];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p
+                .file_name()
+                .is_some_and(|n| wanted.iter().any(|w| w == &n.to_string_lossy()))
+            {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
