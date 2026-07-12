@@ -171,3 +171,15 @@ fn find_module_file(name: &str, release: &str) -> Option<PathBuf> {
     }
     None
 }
+
+/// Enumerate persistence locations. Read-only: nothing here is disabled,
+/// removed, or rewritten.
+pub fn persistence() -> Result<Vec<PersistenceItem>> {
+    let mut out = Vec::new();
+    systemd_units(&mut out);
+    cron(&mut out);
+    autostart(&mut out);
+    rc_local(&mut out);
+    out.sort_by(|a, b| (&a.kind, &a.location, &a.name).cmp(&(&b.kind, &b.location, &b.name)));
+    Ok(out)
+}
