@@ -183,3 +183,45 @@ pub fn persistence() -> Result<Vec<PersistenceItem>> {
     out.sort_by(|a, b| (&a.kind, &a.location, &a.name).cmp(&(&b.kind, &b.location, &b.name)));
     Ok(out)
 }
+
+fn systemd_units(out: &mut Vec<PersistenceItem>) {
+    // Ordered by precedence: an admin-placed unit in /etc shadows a vendor one.
+    for dir in [
+        "/etc/systemd/system",
+        "/run/systemd/system",
+        "/usr/lib/systemd/system",
+        "/lib/systemd/system",
+        "/etc/systemd/user",
+        "/usr/lib/systemd/user",
+    ] {
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !(name.ends_with(".service") || name.ends_with(".timer")) {
+                continue;
+            }
+            // A unit symlinked into a .wants/ dir is enabled; the file itself is
+            // what executes, so record the file.
+            let exec = fs::read_to_string(&path).ok().and_then(|t| {
+                t.lines()
+                    .find(|l| l.trim_start().starts_with("ExecStart="))
+                    .map(|l| {
+                        l.trim_start()
+                            .trim_start_matches("ExecStart=")
+                            .trim()
+                            .to_string()
+                    })
+            });
+            out.push(PersistenceItem {
+                kind: "systemd".into(),
+                location: dir.into(),
+                name,
+                sha256: hash_file_opt(&path),
+                value: exec,
+            });
+        }
+    }
+}
