@@ -93,3 +93,43 @@ pub fn sessions() -> Result<Vec<Session>> {
     }
     Ok(out)
 }
+
+/// Loaded kernel modules from `/proc/modules`, hashed against their on-disk
+/// `.ko` where one is resolvable under `/lib/modules/<release>`.
+pub fn kernel_modules() -> Result<Vec<KernelModule>> {
+    let text = fs::read_to_string("/proc/modules").context("read /proc/modules")?;
+    let release = fs::read_to_string("/proc/sys/kernel/osrelease")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    let mut out = Vec::new();
+    for line in text.lines() {
+        // name size refcount used_by state offset
+        let f: Vec<&str> = line.split_whitespace().collect();
+        if f.is_empty() {
+            continue;
+        }
+        let used_by: Vec<String> = f
+            .get(3)
+            .filter(|s| **s != "-")
+            .map(|s| {
+                s.trim_end_matches(',')
+                    .split(',')
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let path = find_module_file(f[0], &release);
+        out.push(KernelModule {
+            name: f[0].to_string(),
+            size: f.get(1).and_then(|s| s.parse().ok()),
+            sha256: path.as_deref().and_then(hash_file_opt),
+            path: path.map(|p| p.display().to_string()),
+            used_by,
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
