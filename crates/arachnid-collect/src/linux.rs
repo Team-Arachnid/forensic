@@ -294,3 +294,36 @@ fn cron(out: &mut Vec<PersistenceItem>) {
         }
     }
 }
+
+fn autostart(out: &mut Vec<PersistenceItem>) {
+    let mut dirs: Vec<PathBuf> = vec!["/etc/xdg/autostart".into()];
+    // Per-user autostart under every real home, not just the invoking user's.
+    if let Ok(homes) = fs::read_dir("/home") {
+        dirs.extend(homes.flatten().map(|e| e.path().join(".config/autostart")));
+    }
+    dirs.push("/root/.config/autostart".into());
+
+    for dir in dirs {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "desktop") {
+                continue;
+            }
+            let exec = fs::read_to_string(&path).ok().and_then(|t| {
+                t.lines()
+                    .find(|l| l.starts_with("Exec="))
+                    .map(|l| l.trim_start_matches("Exec=").trim().to_string())
+            });
+            out.push(PersistenceItem {
+                kind: "autostart".into(),
+                location: dir.display().to_string(),
+                name: entry.file_name().to_string_lossy().into_owned(),
+                value: exec,
+                sha256: hash_file_opt(&path),
+            });
+        }
+    }
+}
