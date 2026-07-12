@@ -327,3 +327,18 @@ fn autostart(out: &mut Vec<PersistenceItem>) {
         }
     }
 }
+
+fn rc_local(out: &mut Vec<PersistenceItem>) {
+    for p in ["/etc/rc.local", "/etc/rc.d/rc.local"] {
+        let path = Path::new(p);
+        if path.is_file() {
+            out.push(PersistenceItem {
+                kind: "rc_local".into(),
+                location: p.into(),
+                name: "rc.local".into(),
+                value: None,
+                sha256: hash_file_opt(path),
+            });
+        }
+    }
+}
