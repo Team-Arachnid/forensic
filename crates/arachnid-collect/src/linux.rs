@@ -225,3 +225,72 @@ fn systemd_units(out: &mut Vec<PersistenceItem>) {
         }
     }
 }
+
+fn cron(out: &mut Vec<PersistenceItem>) {
+    let mut push_file = |kind: &str, path: &Path| {
+        let Ok(text) = fs::read_to_string(path) else {
+            return;
+        };
+        let sha = hash_file_opt(path);
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') || !line.contains(' ') {
+                continue;
+            }
+            // Skip environment assignments (PATH=, SHELL=, MAILTO=).
+            if line
+                .split_whitespace()
+                .next()
+                .is_some_and(|w| w.contains('='))
+            {
+                continue;
+            }
+            out.push(PersistenceItem {
+                kind: kind.into(),
+                location: path.display().to_string(),
+                name: path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned(),
+                value: Some(line.to_string()),
+                sha256: sha.clone(),
+            });
+        }
+    };
+
+    push_file("cron", Path::new("/etc/crontab"));
+    for dir in ["/etc/cron.d", "/var/spool/cron", "/var/spool/cron/crontabs"] {
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if entry.path().is_file() {
+                push_file("cron", &entry.path());
+            }
+        }
+    }
+    // cron.{hourly,daily,weekly,monthly} hold scripts, not crontab lines.
+    for dir in [
+        "/etc/cron.hourly",
+        "/etc/cron.daily",
+        "/etc/cron.weekly",
+        "/etc/cron.monthly",
+    ] {
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                out.push(PersistenceItem {
+                    kind: "cron".into(),
+                    location: dir.into(),
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    value: None,
+                    sha256: hash_file_opt(&path),
+                });
+            }
+        }
+    }
+}
