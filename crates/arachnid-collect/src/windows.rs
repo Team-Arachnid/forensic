@@ -67,3 +67,37 @@ pub fn loaded_modules(pid: u32) -> Option<Vec<String>> {
         Some(out.into_iter().collect())
     }
 }
+
+/// Interactive and remote sessions via the Terminal Services API. Covers console,
+/// RDP, and disconnected-but-live sessions.
+pub fn sessions() -> Result<Vec<Session>> {
+    unsafe {
+        let mut info: *mut WTS_SESSION_INFOW = std::ptr::null_mut();
+        let mut count = 0u32;
+        WTSEnumerateSessionsW(Some(WTS_CURRENT_SERVER_HANDLE), 0, 1, &mut info, &mut count)
+            .context("WTSEnumerateSessions")?;
+
+        let mut out = Vec::new();
+        for s in std::slice::from_raw_parts(info, count as usize) {
+            let user = query_session_string(s.SessionId, WTSUserName).unwrap_or_default();
+            if user.is_empty() {
+                continue; // Services and the listener pseudo-sessions have no user.
+            }
+            out.push(Session {
+                user,
+                terminal: Some(s.pWinStationName.to_string().unwrap_or_default())
+                    .filter(|t| !t.is_empty()),
+                remote_host: query_session_string(s.SessionId, WTSClientName)
+                    .filter(|h| !h.is_empty()),
+                // WTS exposes no login timestamp on this struct; the analyst gets
+                // it from the Security event log, which is a separate artifact.
+                login_time: None,
+                session_id: Some(s.SessionId.to_string()),
+                state: Some(format!("{:?}", s.State)),
+            });
+        }
+        let _ = WTSFreeMemory(info as *mut std::ffi::c_void);
+        let _ = WTSConnectState; // documents the state enum used above
+        Ok(out)
+    }
+}
