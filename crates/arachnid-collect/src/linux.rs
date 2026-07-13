@@ -342,3 +342,23 @@ fn rc_local(out: &mut Vec<PersistenceItem>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn own_maps_include_our_binary() {
+        let mods = loaded_modules(std::process::id()).expect("own maps readable");
+        assert!(
+            mods.iter().all(|m| m.starts_with('/')),
+            "non-absolute mapping: {mods:?}"
+        );
+        assert!(!mods.is_empty());
+    }
+
+    #[test]
+    fn maps_of_a_dead_pid_are_none_not_an_error() {
+        assert!(loaded_modules(u32::MAX).is_none());
+    }
+}
