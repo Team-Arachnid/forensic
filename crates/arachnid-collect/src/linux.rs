@@ -361,4 +361,31 @@ mod tests {
     fn maps_of_a_dead_pid_are_none_not_an_error() {
         assert!(loaded_modules(u32::MAX).is_none());
     }
+
+    #[test]
+    fn kernel_modules_parse() {
+        // Containers and minimal kernels legitimately have none; assert shape.
+        for m in kernel_modules().unwrap() {
+            assert!(!m.name.is_empty());
+            assert!(
+                !m.used_by.iter().any(|u| u.is_empty()),
+                "empty used_by entry in {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn persistence_entries_are_well_formed() {
+        for p in persistence().unwrap() {
+            assert!(!p.location.is_empty() && !p.name.is_empty(), "{p:?}");
+            assert!(
+                matches!(
+                    p.kind.as_str(),
+                    "systemd" | "cron" | "autostart" | "rc_local"
+                ),
+                "unexpected kind {}",
+                p.kind
+            );
+        }
+    }
 }
