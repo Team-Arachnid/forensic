@@ -388,4 +388,14 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn sessions_do_not_error_when_utmp_exists() {
+        // No assertion on count: a container may have zero interactive sessions.
+        if Path::new("/var/run/utmp").exists() || Path::new("/run/utmp").exists() {
+            for s in sessions().unwrap() {
+                assert!(!s.user.is_empty());
+            }
+        }
+    }
 }
