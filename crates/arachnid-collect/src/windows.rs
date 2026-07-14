@@ -186,3 +186,14 @@ fn resolve_driver_path(raw: &str) -> Option<PathBuf> {
     let p = PathBuf::from(mapped);
     p.is_file().then_some(p)
 }
+
+/// Enumerate persistence locations. Read-only: no key is created, deleted, or
+/// rewritten, and no scheduled task is registered or removed.
+pub fn persistence() -> Result<Vec<PersistenceItem>> {
+    let mut out = Vec::new();
+    run_keys(&mut out);
+    scheduled_tasks(&mut out);
+    startup_folders(&mut out);
+    out.sort_by(|a, b| (&a.kind, &a.location, &a.name).cmp(&(&b.kind, &b.location, &b.name)));
+    Ok(out)
+}
