@@ -239,3 +239,43 @@ fn run_keys(out: &mut Vec<PersistenceItem>) {
         }
     }
 }
+
+/// Scheduled tasks, read from the on-disk task store under `System32\Tasks`.
+///
+// ponytail: reads the task XML files directly instead of driving the Task
+// Scheduler COM API. Ceiling: misses a task registered only in the registry
+// store with no matching file (a known anti-forensics trick). Upgrade path:
+// ITaskService::GetFolder enumeration, or cross-check against
+// HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tasks.
+fn scheduled_tasks(out: &mut Vec<PersistenceItem>) {
+    let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    let root = PathBuf::from(&sysroot).join(r"System32\Tasks");
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let name = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let command = fs::read_to_string(&path)
+                .ok()
+                .and_then(|x| xml_tag(&x, "Command"));
+            out.push(PersistenceItem {
+                kind: "scheduled_task".into(),
+                location: dir.display().to_string(),
+                name,
+                sha256: hash_file_opt(&path),
+                value: command,
+            });
+        }
+    }
+}
