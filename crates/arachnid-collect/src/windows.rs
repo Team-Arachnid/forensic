@@ -279,3 +279,11 @@ fn scheduled_tasks(out: &mut Vec<PersistenceItem>) {
         }
     }
 }
+
+/// Extract one element's text. Task XML is machine-generated and flat here, so a
+/// full parser would be a dependency for a single field.
+fn xml_tag(xml: &str, tag: &str) -> Option<String> {
+    let start = xml.find(&format!("<{tag}>"))? + tag.len() + 2;
+    let end = xml[start..].find(&format!("</{tag}>"))?;
+    Some(xml[start..start + end].trim().to_string())
+}
