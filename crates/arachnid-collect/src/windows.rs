@@ -197,3 +197,45 @@ pub fn persistence() -> Result<Vec<PersistenceItem>> {
     out.sort_by(|a, b| (&a.kind, &a.location, &a.name).cmp(&(&b.kind, &b.location, &b.name)));
     Ok(out)
 }
+
+fn run_keys(out: &mut Vec<PersistenceItem>) {
+    const SUBKEYS: &[&str] = &[
+        r"Software\Microsoft\Windows\CurrentVersion\Run",
+        r"Software\Microsoft\Windows\CurrentVersion\RunOnce",
+        r"Software\Microsoft\Windows\CurrentVersion\RunServices",
+        r"Software\Microsoft\Windows\CurrentVersion\RunServicesOnce",
+        r"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run",
+        r"Software\Microsoft\Windows NT\CurrentVersion\Winlogon",
+        r"Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Run",
+    ];
+
+    for (hive_name, hive) in [
+        ("HKLM", windows_registry::LOCAL_MACHINE),
+        ("HKCU", windows_registry::CURRENT_USER),
+    ] {
+        for sub in SUBKEYS {
+            let Ok(key) = hive.open(sub) else {
+                continue; // Absent key is the norm, not an error.
+            };
+            let Ok(values) = key.values() else { continue };
+            for (name, value) in values {
+                // A non-string Run value (REG_BINARY, REG_DWORD) is itself worth
+                // recording, so describe it rather than dropping the entry.
+                let cmd = String::try_from(value.clone()).unwrap_or_else(|_| {
+                    format!(
+                        "<non-string value: {:?}, {} bytes>",
+                        value.ty(),
+                        value.len()
+                    )
+                });
+                out.push(PersistenceItem {
+                    kind: "registry_run".into(),
+                    location: format!(r"{hive_name}\{sub}"),
+                    sha256: image_from_command(&cmd).as_deref().and_then(hash_file_opt),
+                    name,
+                    value: Some(cmd),
+                });
+            }
+        }
+    }
+}
