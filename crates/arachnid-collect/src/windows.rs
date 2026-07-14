@@ -169,3 +169,20 @@ pub fn kernel_modules() -> Result<Vec<KernelModule>> {
         Ok(out)
     }
 }
+
+/// `EnumDeviceDrivers` returns NT-namespace paths (`\SystemRoot\...`,
+/// `\??\C:\...`). Map them to Win32 paths so the image can be hashed.
+fn resolve_driver_path(raw: &str) -> Option<PathBuf> {
+    let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    let mapped = if let Some(rest) = raw.strip_prefix(r"\SystemRoot\") {
+        format!(r"{sysroot}\{rest}")
+    } else if let Some(rest) = raw.strip_prefix(r"\??\") {
+        rest.to_string()
+    } else if let Some(rest) = raw.strip_prefix(r"\Windows\") {
+        format!(r"{sysroot}\{rest}")
+    } else {
+        raw.to_string()
+    };
+    let p = PathBuf::from(mapped);
+    p.is_file().then_some(p)
+}
