@@ -122,3 +122,50 @@ fn query_session_string(
         s
     }
 }
+
+/// Loaded kernel-mode drivers via `EnumDeviceDrivers`, hashed against their
+/// on-disk image where the path resolves.
+pub fn kernel_modules() -> Result<Vec<KernelModule>> {
+    unsafe {
+        let mut needed = 0u32;
+        EnumDeviceDrivers(std::ptr::null_mut(), 0, &mut needed)
+            .context("EnumDeviceDrivers size")?;
+
+        let count = needed as usize / std::mem::size_of::<*mut std::ffi::c_void>();
+        let mut bases: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); count + 16];
+        EnumDeviceDrivers(
+            bases.as_mut_ptr(),
+            (std::mem::size_of_val(&bases[..])) as u32,
+            &mut needed,
+        )
+        .context("EnumDeviceDrivers")?;
+        let count =
+            (needed as usize / std::mem::size_of::<*mut std::ffi::c_void>()).min(bases.len());
+
+        let mut out = Vec::new();
+        let mut name = [0u16; MAX_PATH as usize];
+        for &base in &bases[..count] {
+            let n = GetDeviceDriverFileNameW(base, &mut name);
+            if n == 0 {
+                continue;
+            }
+            let raw = wide_to_string(&name[..n as usize]);
+            let path = resolve_driver_path(&raw);
+            out.push(KernelModule {
+                name: Path::new(&raw)
+                    .file_name()
+                    .map(|f| f.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| raw.clone()),
+                size: path
+                    .as_ref()
+                    .and_then(|p| fs::metadata(p).ok())
+                    .map(|m| m.len()),
+                sha256: path.as_deref().and_then(hash_file_opt),
+                path: Some(path.map_or(raw, |p| p.display().to_string())),
+                used_by: Vec::new(),
+            });
+        }
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(out)
+    }
+}
