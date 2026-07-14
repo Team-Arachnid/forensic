@@ -101,3 +101,24 @@ pub fn sessions() -> Result<Vec<Session>> {
         Ok(out)
     }
 }
+
+fn query_session_string(
+    session: u32,
+    class: windows::Win32::System::RemoteDesktop::WTS_INFO_CLASS,
+) -> Option<String> {
+    unsafe {
+        let mut buf = windows::core::PWSTR::null();
+        let mut len = 0u32;
+        WTSQuerySessionInformationW(
+            Some(WTS_CURRENT_SERVER_HANDLE),
+            session,
+            class,
+            &mut buf,
+            &mut len,
+        )
+        .ok()?;
+        let s = buf.to_string().ok();
+        WTSFreeMemory(buf.as_ptr() as *mut std::ffi::c_void);
+        s
+    }
+}
