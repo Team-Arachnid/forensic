@@ -360,4 +360,22 @@ mod tests {
     fn modules_of_a_dead_pid_are_none_not_an_error() {
         assert!(loaded_modules(u32::MAX).is_none());
     }
+
+    #[test]
+    fn kernel_drivers_include_the_kernel() {
+        let mods = kernel_modules().unwrap();
+        assert!(
+            mods.iter()
+                .any(|m| m.name.to_lowercase().starts_with("ntoskrnl")),
+            "ntoskrnl not among {} drivers",
+            mods.len()
+        );
+    }
+
+    #[test]
+    fn persistence_entries_are_well_formed() {
+        for p in persistence().unwrap() {
+            assert!(!p.location.is_empty() && !p.name.is_empty(), "{p:?}");
+        }
+    }
 }
