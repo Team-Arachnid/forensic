@@ -20,3 +20,10 @@ pub fn sessions() -> Result<Vec<Session>> {
         std::env::consts::OS
     )
 }
+
+pub fn kernel_modules() -> Result<Vec<KernelModule>> {
+    bail!(
+        "kernel module enumeration is not implemented on {}",
+        std::env::consts::OS
+    )
+}
