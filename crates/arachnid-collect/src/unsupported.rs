@@ -13,3 +13,10 @@ use crate::{KernelModule, PersistenceItem, Session};
 pub fn loaded_modules(_pid: u32) -> Option<Vec<String>> {
     None
 }
+
+pub fn sessions() -> Result<Vec<Session>> {
+    bail!(
+        "session enumeration is not implemented on {}",
+        std::env::consts::OS
+    )
+}
