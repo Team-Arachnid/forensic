@@ -321,3 +321,24 @@ fn startup_folders(out: &mut Vec<PersistenceItem>) {
         }
     }
 }
+
+/// Pull the executable out of a Run-key command line so it can be hashed.
+/// Handles the quoted form and the bare form.
+fn image_from_command(cmd: &str) -> Option<PathBuf> {
+    let cmd = cmd.trim();
+    let candidate = if let Some(rest) = cmd.strip_prefix('"') {
+        rest.split('"').next()?
+    } else {
+        // Unquoted paths with spaces are ambiguous; take the longest prefix that
+        // is an existing file, else the first whitespace-delimited token.
+        let mut best = None;
+        for (i, _) in cmd.match_indices(' ') {
+            if Path::new(&cmd[..i]).is_file() {
+                best = Some(&cmd[..i]);
+            }
+        }
+        best.unwrap_or_else(|| cmd.split_whitespace().next().unwrap_or(cmd))
+    };
+    let p = PathBuf::from(candidate);
+    p.is_file().then_some(p)
+}
