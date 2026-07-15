@@ -378,4 +378,17 @@ mod tests {
             assert!(!p.location.is_empty() && !p.name.is_empty(), "{p:?}");
         }
     }
+
+    #[test]
+    fn xml_tag_extracts_a_command() {
+        let xml = r"<Task><Actions><Exec><Command>C:\a.exe</Command></Exec></Actions></Task>";
+        assert_eq!(xml_tag(xml, "Command").as_deref(), Some(r"C:\a.exe"));
+        assert_eq!(xml_tag(xml, "Missing"), None);
+    }
+
+    #[test]
+    fn image_from_command_handles_quotes() {
+        assert!(image_from_command(r#""C:\nonexistent thing.exe" -flag"#).is_none());
+        assert!(image_from_command("").is_none());
+    }
 }
