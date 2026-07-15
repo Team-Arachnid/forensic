@@ -27,3 +27,10 @@ pub fn kernel_modules() -> Result<Vec<KernelModule>> {
         std::env::consts::OS
     )
 }
+
+pub fn persistence() -> Result<Vec<PersistenceItem>> {
+    bail!(
+        "persistence enumeration is not implemented on {}",
+        std::env::consts::OS
+    )
+}
