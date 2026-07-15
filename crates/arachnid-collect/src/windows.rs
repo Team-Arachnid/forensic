@@ -287,3 +287,37 @@ fn xml_tag(xml: &str, tag: &str) -> Option<String> {
     let end = xml[start..].find(&format!("</{tag}>"))?;
     Some(xml[start..start + end].trim().to_string())
 }
+
+fn startup_folders(out: &mut Vec<PersistenceItem>) {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(pd) = std::env::var("ProgramData") {
+        dirs.push(PathBuf::from(pd).join(r"Microsoft\Windows\Start Menu\Programs\StartUp"));
+    }
+    // Every profile, not just the invoking user's.
+    if let Ok(drive) = std::env::var("SystemDrive") {
+        if let Ok(users) = fs::read_dir(format!(r"{drive}\Users")) {
+            dirs.extend(users.flatten().map(|u| {
+                u.path()
+                    .join(r"AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup")
+            }));
+        }
+    }
+
+    for dir in dirs {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                out.push(PersistenceItem {
+                    kind: "startup_folder".into(),
+                    location: dir.display().to_string(),
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    value: None,
+                    sha256: hash_file_opt(&path),
+                });
+            }
+        }
+    }
+}
