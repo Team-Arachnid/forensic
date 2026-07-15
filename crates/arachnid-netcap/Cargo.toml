@@ -8,3 +8,10 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+time.workspace = true
+tracing.workspace = true
+etherparse = "0.21"
+pcap = "2.5"
