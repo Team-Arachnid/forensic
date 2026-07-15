@@ -342,3 +342,22 @@ fn image_from_command(cmd: &str) -> Option<PathBuf> {
     let p = PathBuf::from(candidate);
     p.is_file().then_some(p)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn own_modules_are_enumerable() {
+        let mods = loaded_modules(std::process::id()).expect("own process opens");
+        assert!(
+            mods.iter().any(|m| m.to_lowercase().contains(".exe")),
+            "{mods:?}"
+        );
+    }
+
+    #[test]
+    fn modules_of_a_dead_pid_are_none_not_an_error() {
+        assert!(loaded_modules(u32::MAX).is_none());
+    }
+}
