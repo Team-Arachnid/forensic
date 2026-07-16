@@ -16,3 +16,15 @@ pub struct StreamAssembler {
     limit: usize,
     pub truncated: bool,
 }
+
+impl StreamAssembler {
+    pub fn new(first_seq: u32, limit: usize) -> Self {
+        StreamAssembler {
+            base: first_seq,
+            segments: BTreeMap::new(),
+            stored: 0,
+            limit,
+            truncated: false,
+        }
+    }
+}
