@@ -102,4 +102,20 @@ mod tests {
         a.push(106, b"world");
         assert_eq!(a.finish(), b"hello world");
     }
+
+    #[test]
+    fn overlapping_retransmission_does_not_duplicate_bytes() {
+        let mut a = asm(100);
+        a.push(100, b"hello ");
+        a.push(103, b"lo world"); // overlaps the tail of the first segment
+        assert_eq!(a.finish(), b"hello world");
+    }
+
+    #[test]
+    fn longer_retransmission_of_the_same_offset_wins() {
+        let mut a = asm(100);
+        a.push(100, b"hel");
+        a.push(100, b"hello");
+        assert_eq!(a.finish(), b"hello");
+    }
 }
