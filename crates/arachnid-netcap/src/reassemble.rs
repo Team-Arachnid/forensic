@@ -50,4 +50,21 @@ impl StreamAssembler {
         self.stored += take;
         self.segments.insert(offset, payload[..take].to_vec());
     }
+
+    /// Concatenate in sequence order, skipping regions already covered by an
+    /// earlier segment. A hole in the stream is simply absent: the bytes were
+    /// never captured, and inventing filler would be fabricating evidence.
+    pub fn finish(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.stored);
+        let mut covered_to = 0u64;
+        for (&offset, data) in &self.segments {
+            let start = covered_to.saturating_sub(offset) as usize;
+            if start >= data.len() {
+                continue; // fully overlapped by a previous segment
+            }
+            out.extend_from_slice(&data[start..]);
+            covered_to = covered_to.max(offset + data.len() as u64);
+        }
+        out
+    }
 }
