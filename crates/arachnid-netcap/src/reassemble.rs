@@ -6,3 +6,13 @@
 //! visible instead of silently splicing two non-adjacent regions together.
 
 use std::collections::BTreeMap;
+
+pub struct StreamAssembler {
+    /// Sequence number of the first payload byte seen; all offsets are relative
+    /// to it, which is what makes 32-bit sequence wraparound a non-event.
+    base: u32,
+    segments: BTreeMap<u64, Vec<u8>>,
+    stored: usize,
+    limit: usize,
+    pub truncated: bool,
+}
