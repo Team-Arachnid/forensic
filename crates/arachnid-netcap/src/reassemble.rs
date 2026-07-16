@@ -85,4 +85,21 @@ mod tests {
         assert_eq!(a.finish(), b"hello world");
         assert!(!a.truncated);
     }
+
+    #[test]
+    fn out_of_order_segments_are_sorted() {
+        let mut a = asm(100);
+        a.push(106, b"world");
+        a.push(100, b"hello ");
+        assert_eq!(a.finish(), b"hello world");
+    }
+
+    #[test]
+    fn exact_retransmission_is_deduplicated() {
+        let mut a = asm(100);
+        a.push(100, b"hello ");
+        a.push(100, b"hello ");
+        a.push(106, b"world");
+        assert_eq!(a.finish(), b"hello world");
+    }
 }
