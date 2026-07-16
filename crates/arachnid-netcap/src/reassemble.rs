@@ -68,3 +68,21 @@ impl StreamAssembler {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn asm(first: u32) -> StreamAssembler {
+        StreamAssembler::new(first, 1 << 20)
+    }
+
+    #[test]
+    fn in_order_segments_concatenate() {
+        let mut a = asm(100);
+        a.push(100, b"hello ");
+        a.push(106, b"world");
+        assert_eq!(a.finish(), b"hello world");
+        assert!(!a.truncated);
+    }
+}
