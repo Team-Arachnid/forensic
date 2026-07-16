@@ -27,4 +27,27 @@ impl StreamAssembler {
             truncated: false,
         }
     }
+
+    pub fn push(&mut self, seq: u32, payload: &[u8]) {
+        if payload.is_empty() || self.stored >= self.limit {
+            self.truncated |= self.stored >= self.limit;
+            return;
+        }
+        // Wrapping arithmetic: a stream that crosses the 2^32 boundary keeps
+        // producing increasing offsets instead of jumping back to zero.
+        let offset = seq.wrapping_sub(self.base) as u64;
+        let take = payload.len().min(self.limit - self.stored);
+        if take < payload.len() {
+            self.truncated = true;
+        }
+        // A retransmission of an already-stored offset is dropped unless it
+        // carries more data than what we have.
+        match self.segments.get(&offset) {
+            Some(existing) if existing.len() >= take => return,
+            Some(existing) => self.stored -= existing.len(),
+            None => {}
+        }
+        self.stored += take;
+        self.segments.insert(offset, payload[..take].to_vec());
+    }
 }
