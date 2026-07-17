@@ -47,4 +47,11 @@ impl Collector {
                 context,
             });
     }
+
+    pub fn observe_addresses(&mut self, src: &str, dst: &str, ts: &str) {
+        for a in [src, dst] {
+            let kind = if a.contains(':') { "ipv6" } else { "ipv4" };
+            self.record(kind, a, ts, None);
+        }
+    }
 }
