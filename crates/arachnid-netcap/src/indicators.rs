@@ -107,3 +107,37 @@ impl Collector {
         out
     }
 }
+
+/// Decode a DNS name at `pos`, following compression pointers.
+///
+/// Returns the name and the offset just past the name *in the wire format*,
+/// which is not where a followed pointer ended up.
+fn read_name(msg: &[u8], mut pos: usize) -> Option<(String, usize)> {
+    let mut labels: Vec<String> = Vec::new();
+    let mut end = None;
+    // A malicious or corrupt message can point in a cycle; bound the walk.
+    let mut budget = 128;
+
+    loop {
+        budget -= 1;
+        if budget == 0 {
+            return None;
+        }
+        let len = *msg.get(pos)? as usize;
+        if len == 0 {
+            return Some((labels.join("."), end.unwrap_or(pos + 1)));
+        }
+        if len & 0xc0 == 0xc0 {
+            let ptr = ((len & 0x3f) << 8) | *msg.get(pos + 1)? as usize;
+            end.get_or_insert(pos + 2);
+            if ptr >= msg.len() {
+                return None;
+            }
+            pos = ptr;
+            continue;
+        }
+        let label = msg.get(pos + 1..pos + 1 + len)?;
+        labels.push(String::from_utf8_lossy(label).into_owned());
+        pos += 1 + len;
+    }
+}
