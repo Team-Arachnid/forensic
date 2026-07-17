@@ -21,3 +21,30 @@ pub struct Indicator {
     /// Where it came from, e.g. the flow that carried it.
     pub context: Option<String>,
 }
+
+#[derive(Default)]
+pub(crate) struct Collector {
+    seen: HashMap<(String, String), Indicator>,
+}
+
+impl Collector {
+    fn record(&mut self, kind: &str, value: &str, ts: &str, context: Option<String>) {
+        if value.is_empty() {
+            return;
+        }
+        self.seen
+            .entry((kind.to_string(), value.to_string()))
+            .and_modify(|i| {
+                i.count += 1;
+                i.last_seen_utc = ts.to_string();
+            })
+            .or_insert_with(|| Indicator {
+                kind: kind.into(),
+                value: value.into(),
+                count: 1,
+                first_seen_utc: ts.into(),
+                last_seen_utc: ts.into(),
+                context,
+            });
+    }
+}
