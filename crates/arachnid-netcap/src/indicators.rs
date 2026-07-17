@@ -66,4 +66,33 @@ impl Collector {
             }
         }
     }
+
+    /// Extract indicators from a reassembled TCP stream.
+    pub fn observe_stream(
+        &mut self,
+        src: &str,
+        sport: u16,
+        dst: &str,
+        dport: u16,
+        data: &[u8],
+        ts: &str,
+    ) {
+        if data.is_empty() {
+            return;
+        }
+        let ctx = format!("{src}:{sport} -> {dst}:{dport}");
+
+        if let Some(sni) = parse_tls_sni(data) {
+            self.record("tls_sni", &sni, ts, Some(ctx.clone()));
+        }
+        // DNS over TCP is length-prefixed; the message follows a 2-byte length.
+        if (sport == 53 || dport == 53) && data.len() > 2 {
+            for (kind, name) in parse_dns(&data[2..]) {
+                self.record(kind, &name, ts, Some(ctx.clone()));
+            }
+        }
+        for (kind, value) in parse_http(data) {
+            self.record(kind, &value, ts, Some(ctx.clone()));
+        }
+    }
 }
