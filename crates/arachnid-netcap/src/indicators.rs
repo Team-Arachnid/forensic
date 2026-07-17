@@ -54,4 +54,16 @@ impl Collector {
             self.record(kind, a, ts, None);
         }
     }
+
+    pub fn observe_udp(&mut self, d: &Decoded, ts: &str) {
+        if d.src_port == 53 || d.dst_port == 53 || d.src_port == 5353 || d.dst_port == 5353 {
+            let ctx = format!(
+                "{}:{} -> {}:{}",
+                d.src_addr, d.src_port, d.dst_addr, d.dst_port
+            );
+            for (kind, name) in parse_dns(&d.payload) {
+                self.record(kind, &name, ts, Some(ctx.clone()));
+            }
+        }
+    }
 }
