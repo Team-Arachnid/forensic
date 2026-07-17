@@ -95,4 +95,15 @@ impl Collector {
             self.record(kind, &value, ts, Some(ctx.clone()));
         }
     }
+
+    pub fn finish(self) -> Vec<Indicator> {
+        let mut out: Vec<Indicator> = self.seen.into_values().collect();
+        out.sort_by(|a, b| {
+            a.kind
+                .cmp(&b.kind)
+                .then(b.count.cmp(&a.count))
+                .then(a.value.cmp(&b.value))
+        });
+        out
+    }
 }
