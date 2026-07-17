@@ -135,4 +135,21 @@ mod tests {
                              // Missing bytes are omitted, not fabricated as zeroes.
         assert_eq!(a.finish(), b"aaabbb");
     }
+
+    #[test]
+    fn the_limit_truncates_and_says_so() {
+        let mut a = StreamAssembler::new(0, 4);
+        a.push(0, b"aaaa");
+        a.push(4, b"bbbb");
+        assert_eq!(a.finish(), b"aaaa");
+        assert!(a.truncated);
+    }
+
+    #[test]
+    fn empty_payloads_are_ignored() {
+        let mut a = asm(100);
+        a.push(100, b"");
+        assert!(a.finish().is_empty());
+        assert!(!a.truncated);
+    }
 }
