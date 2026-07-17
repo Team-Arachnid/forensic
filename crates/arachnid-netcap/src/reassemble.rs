@@ -118,4 +118,21 @@ mod tests {
         a.push(100, b"hello");
         assert_eq!(a.finish(), b"hello");
     }
+
+    #[test]
+    fn sequence_wraparound_stays_in_order() {
+        let mut a = asm(u32::MAX - 2);
+        a.push(u32::MAX - 2, b"abc"); // offsets 0..3
+        a.push(1, b"de"); // wraps past 2^32; offset 4
+        assert_eq!(a.finish(), b"abcde");
+    }
+
+    #[test]
+    fn a_gap_is_left_as_a_gap() {
+        let mut a = asm(100);
+        a.push(100, b"aaa");
+        a.push(200, b"bbb"); // 97 bytes never captured
+                             // Missing bytes are omitted, not fabricated as zeroes.
+        assert_eq!(a.finish(), b"aaabbb");
+    }
 }
