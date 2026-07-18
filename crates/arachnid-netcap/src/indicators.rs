@@ -197,3 +197,50 @@ fn parse_dns(msg: &[u8]) -> Vec<(&'static str, String)> {
     }
     out
 }
+
+/// Extract the SNI hostname from a TLS ClientHello at the start of a stream.
+///
+/// Reassembly runs first, so a ClientHello split across segments still parses.
+/// Encrypted ClientHello and TLS 1.3 without SNI simply yield `None`; this reads
+/// the plaintext handshake and does not attempt to decrypt anything.
+fn parse_tls_sni(data: &[u8]) -> Option<String> {
+    // TLS record: type(1) version(2) length(2)
+    if *data.first()? != 0x16 {
+        return None;
+    }
+    let rec_len = u16::from_be_bytes([*data.get(3)?, *data.get(4)?]) as usize;
+    let body = data.get(5..(5 + rec_len).min(data.len()))?;
+
+    // Handshake: type(1) length(3) version(2) random(32)
+    if *body.first()? != 0x01 {
+        return None;
+    }
+    let mut p = 4 + 2 + 32;
+
+    let sid_len = *body.get(p)? as usize;
+    p += 1 + sid_len;
+
+    let cs_len = u16::from_be_bytes([*body.get(p)?, *body.get(p + 1)?]) as usize;
+    p += 2 + cs_len;
+
+    let comp_len = *body.get(p)? as usize;
+    p += 1 + comp_len;
+
+    let ext_total = u16::from_be_bytes([*body.get(p)?, *body.get(p + 1)?]) as usize;
+    p += 2;
+    let ext_end = (p + ext_total).min(body.len());
+
+    while p + 4 <= ext_end {
+        let ext_type = u16::from_be_bytes([body[p], body[p + 1]]);
+        let ext_len = u16::from_be_bytes([body[p + 2], body[p + 3]]) as usize;
+        let ext = body.get(p + 4..p + 4 + ext_len)?;
+        if ext_type == 0x0000 {
+            // server_name: list_len(2) name_type(1) name_len(2) name
+            let name_len = u16::from_be_bytes([*ext.get(3)?, *ext.get(4)?]) as usize;
+            let name = ext.get(5..5 + name_len)?;
+            return Some(String::from_utf8_lossy(name).into_owned());
+        }
+        p += 4 + ext_len;
+    }
+    None
+}
