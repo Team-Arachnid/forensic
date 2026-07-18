@@ -383,4 +383,28 @@ mod tests {
             assert!(parse_tls_sni(&full[..n]).is_none() || n == full.len());
         }
     }
+
+    #[test]
+    fn non_tls_data_yields_no_sni() {
+        assert!(parse_tls_sni(b"GET / HTTP/1.1\r\n\r\n").is_none());
+        assert!(parse_tls_sni(b"").is_none());
+    }
+
+    #[test]
+    fn http_request_indicators_are_extracted() {
+        let stream = b"GET /admin/login.php HTTP/1.1\r\nHost: evil.example\r\nUser-Agent: curl/8.5.0\r\n\r\n";
+        let got = parse_http(stream);
+        assert!(
+            got.contains(&("http_uri", "/admin/login.php".into())),
+            "{got:?}"
+        );
+        assert!(
+            got.contains(&("http_host", "evil.example".into())),
+            "{got:?}"
+        );
+        assert!(
+            got.contains(&("http_user_agent", "curl/8.5.0".into())),
+            "{got:?}"
+        );
+    }
 }
