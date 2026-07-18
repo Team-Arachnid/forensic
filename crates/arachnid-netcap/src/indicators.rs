@@ -244,3 +244,48 @@ fn parse_tls_sni(data: &[u8]) -> Option<String> {
     }
     None
 }
+
+const HTTP_METHODS: &[&str] = &[
+    "GET ", "POST ", "PUT ", "HEAD ", "DELETE ", "OPTIONS ", "PATCH ", "TRACE ", "CONNECT ",
+];
+
+/// Pull request lines and the headers worth pivoting on out of a cleartext HTTP
+/// stream. Deliberately line-based rather than a full HTTP parser: a reassembled
+/// stream can hold several pipelined requests and a truncated tail, which a
+/// strict parser would reject outright.
+fn parse_http(data: &[u8]) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    // Bound the scan: indicators live in the headers, not in a 8 MiB body.
+    let head = &data[..data.len().min(64 * 1024)];
+    let text = String::from_utf8_lossy(head);
+    let mut in_headers = false;
+
+    for line in text.split("\r\n").chain(std::iter::once("")) {
+        if HTTP_METHODS.iter().any(|m| line.starts_with(m)) {
+            if let Some(uri) = line.split_whitespace().nth(1) {
+                if line.contains("HTTP/1.") {
+                    out.push(("http_uri", uri.to_string()));
+                    in_headers = true;
+                }
+            }
+            continue;
+        }
+        if !in_headers {
+            continue;
+        }
+        if line.is_empty() {
+            in_headers = false;
+            continue;
+        }
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value.trim();
+        match name.to_ascii_lowercase().as_str() {
+            "host" => out.push(("http_host", value.to_string())),
+            "user-agent" => out.push(("http_user_agent", value.to_string())),
+            _ => {}
+        }
+    }
+    out
+}
