@@ -141,3 +141,59 @@ fn read_name(msg: &[u8], mut pos: usize) -> Option<(String, usize)> {
         pos += 1 + len;
     }
 }
+
+/// Pull query names and the names inside CNAME/NS answers out of a DNS message.
+/// Malformed messages yield whatever parsed cleanly before the break.
+fn parse_dns(msg: &[u8]) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    if msg.len() < 12 {
+        return out;
+    }
+    let qd = u16::from_be_bytes([msg[4], msg[5]]) as usize;
+    let an = u16::from_be_bytes([msg[6], msg[7]]) as usize;
+    let mut pos = 12;
+
+    for _ in 0..qd.min(64) {
+        let Some((name, next)) = read_name(msg, pos) else {
+            return out;
+        };
+        out.push(("dns_query", name));
+        pos = next + 4; // QTYPE + QCLASS
+    }
+
+    for _ in 0..an.min(64) {
+        let Some((name, next)) = read_name(msg, pos) else {
+            return out;
+        };
+        if msg.len() < next + 10 {
+            return out;
+        }
+        let rtype = u16::from_be_bytes([msg[next], msg[next + 1]]);
+        let rdlen = u16::from_be_bytes([msg[next + 8], msg[next + 9]]) as usize;
+        let rdata = next + 10;
+        match rtype {
+            1 if rdlen == 4 => {
+                let ip = std::net::Ipv4Addr::from(
+                    <[u8; 4]>::try_from(msg.get(rdata..rdata + 4).unwrap_or(&[0; 4]))
+                        .unwrap_or([0; 4]),
+                );
+                out.push(("dns_answer", format!("{name} -> {ip}")));
+            }
+            28 if rdlen == 16 => {
+                let ip = std::net::Ipv6Addr::from(
+                    <[u8; 16]>::try_from(msg.get(rdata..rdata + 16).unwrap_or(&[0; 16]))
+                        .unwrap_or([0; 16]),
+                );
+                out.push(("dns_answer", format!("{name} -> {ip}")));
+            }
+            5 => {
+                if let Some((target, _)) = read_name(msg, rdata) {
+                    out.push(("dns_answer", format!("{name} -> {target}")));
+                }
+            }
+            _ => {}
+        }
+        pos = rdata + rdlen;
+    }
+    out
+}
