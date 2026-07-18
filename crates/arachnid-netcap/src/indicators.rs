@@ -289,3 +289,25 @@ fn parse_http(data: &[u8]) -> Vec<(&'static str, String)> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `www.example.com` A query.
+    fn dns_query_msg() -> Vec<u8> {
+        let mut m = vec![0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0];
+        for label in ["www", "example", "com"] {
+            m.push(label.len() as u8);
+            m.extend_from_slice(label.as_bytes());
+        }
+        m.extend_from_slice(&[0, 0, 1, 0, 1]);
+        m
+    }
+
+    #[test]
+    fn dns_query_name_is_extracted() {
+        let got = parse_dns(&dns_query_msg());
+        assert_eq!(got, vec![("dns_query", "www.example.com".to_string())]);
+    }
+}
