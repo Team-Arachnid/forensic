@@ -333,4 +333,38 @@ mod tests {
         m.extend_from_slice(&[0xc0, 0x0c]);
         assert!(parse_dns(&m).is_empty());
     }
+
+    #[test]
+    fn truncated_dns_does_not_panic() {
+        for n in 0..dns_query_msg().len() {
+            let _ = parse_dns(&dns_query_msg()[..n]);
+        }
+    }
+
+    /// Minimal ClientHello advertising SNI `example.org`.
+    fn client_hello(host: &str) -> Vec<u8> {
+        let mut sni = vec![0x00]; // name_type = host_name
+        sni.extend_from_slice(&(host.len() as u16).to_be_bytes());
+        sni.extend_from_slice(host.as_bytes());
+        let mut list = ((sni.len()) as u16).to_be_bytes().to_vec();
+        list.extend_from_slice(&sni);
+
+        let mut ext = vec![0x00, 0x00]; // extension_type = server_name
+        ext.extend_from_slice(&(list.len() as u16).to_be_bytes());
+        ext.extend_from_slice(&list);
+
+        let mut body = vec![0x01, 0, 0, 0]; // handshake type + length placeholder
+        body.extend_from_slice(&[0x03, 0x03]);
+        body.extend_from_slice(&[0u8; 32]);
+        body.push(0); // empty session id
+        body.extend_from_slice(&[0x00, 0x02, 0x13, 0x01]); // one cipher suite
+        body.extend_from_slice(&[0x01, 0x00]); // one compression method
+        body.extend_from_slice(&(ext.len() as u16).to_be_bytes());
+        body.extend_from_slice(&ext);
+
+        let mut rec = vec![0x16, 0x03, 0x01];
+        rec.extend_from_slice(&(body.len() as u16).to_be_bytes());
+        rec.extend_from_slice(&body);
+        rec
+    }
 }
