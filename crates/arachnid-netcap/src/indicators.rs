@@ -367,4 +367,20 @@ mod tests {
         rec.extend_from_slice(&body);
         rec
     }
+
+    #[test]
+    fn tls_sni_is_extracted() {
+        assert_eq!(
+            parse_tls_sni(&client_hello("example.org")).as_deref(),
+            Some("example.org")
+        );
+    }
+
+    #[test]
+    fn truncated_client_hello_does_not_panic() {
+        let full = client_hello("example.org");
+        for n in 0..full.len() {
+            assert!(parse_tls_sni(&full[..n]).is_none() || n == full.len());
+        }
+    }
 }
