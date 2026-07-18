@@ -310,4 +310,27 @@ mod tests {
         let got = parse_dns(&dns_query_msg());
         assert_eq!(got, vec![("dns_query", "www.example.com".to_string())]);
     }
+
+    #[test]
+    fn dns_answer_a_record_is_extracted() {
+        let mut m = dns_query_msg();
+        m[6] = 0;
+        m[7] = 1; // one answer
+        m.extend_from_slice(&[0xc0, 0x0c]); // pointer back to the question name
+        m.extend_from_slice(&[0, 1, 0, 1, 0, 0, 0, 60, 0, 4]);
+        m.extend_from_slice(&[93, 184, 216, 34]);
+        let got = parse_dns(&m);
+        assert!(
+            got.contains(&("dns_answer", "www.example.com -> 93.184.216.34".to_string())),
+            "{got:?}"
+        );
+    }
+
+    #[test]
+    fn a_compression_pointer_loop_terminates() {
+        // Name at offset 12 points at itself.
+        let mut m = vec![0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0];
+        m.extend_from_slice(&[0xc0, 0x0c]);
+        assert!(parse_dns(&m).is_empty());
+    }
 }
