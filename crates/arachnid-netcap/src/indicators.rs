@@ -407,4 +407,24 @@ mod tests {
             "{got:?}"
         );
     }
+
+    #[test]
+    fn pipelined_requests_are_all_extracted() {
+        let stream =
+            b"GET /a HTTP/1.1\r\nHost: a.example\r\n\r\nGET /b HTTP/1.1\r\nHost: b.example\r\n\r\n";
+        let got = parse_http(stream);
+        assert_eq!(
+            got.iter().filter(|(k, _)| *k == "http_uri").count(),
+            2,
+            "{got:?}"
+        );
+        assert!(got.contains(&("http_host", "b.example".into())), "{got:?}");
+    }
+
+    #[test]
+    fn a_response_body_mentioning_get_is_not_a_request() {
+        let got =
+            parse_http(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\nGET this free stuff");
+        assert!(got.is_empty(), "{got:?}");
+    }
 }
