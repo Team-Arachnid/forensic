@@ -31,3 +31,18 @@ pub struct DeviceInfo {
     pub addresses: Vec<String>,
     pub loopback: bool,
 }
+
+/// Interfaces available for capture. Requires the same privilege as capture
+/// itself (root / `CAP_NET_RAW` on Linux, Npcap driver access on Windows).
+pub fn list_devices() -> Result<Vec<DeviceInfo>> {
+    Ok(pcap::Device::list()
+        .context("enumerate capture devices")?
+        .into_iter()
+        .map(|d| DeviceInfo {
+            loopback: d.flags.is_loopback(),
+            name: d.name,
+            description: d.desc,
+            addresses: d.addresses.iter().map(|a| a.addr.to_string()).collect(),
+        })
+        .collect())
+}
