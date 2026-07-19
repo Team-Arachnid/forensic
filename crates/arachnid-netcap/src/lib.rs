@@ -73,3 +73,21 @@ impl Default for LiveOptions {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureStats {
+    pub device: String,
+    pub filter: Option<String>,
+    pub promiscuous: bool,
+    pub snaplen: i32,
+    pub datalink: String,
+    pub started_utc: String,
+    pub finished_utc: String,
+    pub packets_written: u64,
+    pub bytes_written: u64,
+    /// Dropped by the kernel or the driver: the capture did not keep up, and the
+    /// resulting evidence has gaps. Non-zero is a finding, not a nuisance.
+    pub packets_dropped_kernel: u64,
+    pub packets_dropped_interface: u64,
+    pub stop_reason: String,
+}
