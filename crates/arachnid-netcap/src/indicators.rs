@@ -427,4 +427,16 @@ mod tests {
             parse_http(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\nGET this free stuff");
         assert!(got.is_empty(), "{got:?}");
     }
+
+    #[test]
+    fn collector_counts_and_sorts() {
+        let mut c = Collector::default();
+        c.observe_addresses("1.2.3.4", "5.6.7.8", "t0");
+        c.observe_addresses("1.2.3.4", "9.9.9.9", "t1");
+        let out = c.finish();
+        let top = out.iter().find(|i| i.value == "1.2.3.4").unwrap();
+        assert_eq!(top.count, 2);
+        assert_eq!(top.first_seen_utc, "t0");
+        assert_eq!(top.last_seen_utc, "t1");
+    }
 }
