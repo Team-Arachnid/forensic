@@ -46,3 +46,16 @@ pub fn list_devices() -> Result<Vec<DeviceInfo>> {
         })
         .collect())
 }
+
+#[derive(Debug, Clone)]
+pub struct LiveOptions {
+    pub device: String,
+    /// BPF filter, applied in the kernel so filtered traffic is never copied.
+    pub filter: Option<String>,
+    pub snaplen: i32,
+    pub promiscuous: bool,
+    /// Stop after this many packets. `None` for unlimited.
+    pub max_packets: Option<u64>,
+    /// Stop after this long. `None` for unlimited.
+    pub duration: Option<Duration>,
+}
