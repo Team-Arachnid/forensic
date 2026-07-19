@@ -8,3 +8,26 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+mod indicators;
+mod reassemble;
+
+pub use indicators::Indicator;
+use reassemble::StreamAssembler;
+
+/// Per-flow reassembly ceiling. A capture holding a multi-gigabyte download must
+/// not put that download in RAM; indicators live in the first few KiB anyway.
+pub const DEFAULT_MAX_STREAM_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceInfo {
+    pub name: String,
+    pub description: Option<String>,
+    pub addresses: Vec<String>,
+    pub loopback: bool,
+}
