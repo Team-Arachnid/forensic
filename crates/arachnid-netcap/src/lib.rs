@@ -59,3 +59,17 @@ pub struct LiveOptions {
     /// Stop after this long. `None` for unlimited.
     pub duration: Option<Duration>,
 }
+
+impl Default for LiveOptions {
+    fn default() -> Self {
+        LiveOptions {
+            device: String::new(),
+            filter: None,
+            // Full frames: a truncated payload is a truncated indicator.
+            snaplen: 65535,
+            promiscuous: false,
+            max_packets: None,
+            duration: None,
+        }
+    }
+}
