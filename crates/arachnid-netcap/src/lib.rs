@@ -194,3 +194,22 @@ pub fn capture_live(opts: &LiveOptions, out: &Path, stop: &AtomicBool) -> Result
         stop_reason: stop_reason.into(),
     })
 }
+
+/// One transport-layer conversation, keyed by the 5-tuple as first observed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Flow {
+    pub protocol: String,
+    pub src_addr: String,
+    pub src_port: u16,
+    pub dst_addr: String,
+    pub dst_port: u16,
+    pub packets: u64,
+    pub bytes: u64,
+    pub first_seen_utc: String,
+    pub last_seen_utc: String,
+    /// Payload bytes recovered by reassembly. TCP only.
+    pub reassembled_bytes: u64,
+    /// True if the flow hit [`ParseOptions::max_stream_bytes`] and reassembly
+    /// stopped early. Indicators from this flow may be incomplete.
+    pub truncated: bool,
+}
