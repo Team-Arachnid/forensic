@@ -237,3 +237,12 @@ pub struct ParseOptions {
     /// BPF filter applied to the savefile, same syntax as live capture.
     pub filter: Option<String>,
 }
+
+impl Default for ParseOptions {
+    fn default() -> Self {
+        ParseOptions {
+            max_stream_bytes: DEFAULT_MAX_STREAM_BYTES,
+            filter: None,
+        }
+    }
+}
