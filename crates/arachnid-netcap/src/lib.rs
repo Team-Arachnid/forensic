@@ -91,3 +91,106 @@ pub struct CaptureStats {
     pub packets_dropped_interface: u64,
     pub stop_reason: String,
 }
+
+/// Capture live traffic to a PCAP savefile.
+///
+/// Returns when a limit in `opts` is reached or `stop` is set. The savefile is
+/// flushed before returning, including on the `stop` path, so an operator-
+/// interrupted capture still yields a readable file.
+pub fn capture_live(opts: &LiveOptions, out: &Path, stop: &AtomicBool) -> Result<CaptureStats> {
+    let device = pcap::Device::list()
+        .context("enumerate capture devices")?
+        .into_iter()
+        .find(|d| d.name == opts.device)
+        .with_context(|| format!("capture device {:?} not found", opts.device))?;
+
+    let mut cap = pcap::Capture::from_device(device)
+        .context("open capture device")?
+        .promisc(opts.promiscuous)
+        .snaplen(opts.snaplen)
+        // Bounded read timeout, so `stop` is honoured on an idle link instead of
+        // blocking in the driver until the next packet arrives.
+        .timeout(250)
+        .immediate_mode(true)
+        .open()
+        .with_context(|| {
+            format!(
+                "open {:?} for capture (needs root/CAP_NET_RAW on Linux, Npcap on Windows)",
+                opts.device
+            )
+        })?
+        .setnonblock()
+        .context("set non-blocking capture")?;
+
+    if let Some(f) = &opts.filter {
+        cap.filter(f, true)
+            .with_context(|| format!("apply BPF filter {f:?}"))?;
+    }
+
+    let datalink = format!("{:?}", cap.get_datalink());
+    let started_utc = now_utc();
+    let start = Instant::now();
+    let mut savefile = cap
+        .savefile(out)
+        .with_context(|| format!("create savefile {}", out.display()))?;
+
+    let mut packets = 0u64;
+    let mut bytes = 0u64;
+    let stop_reason = loop {
+        if stop.load(Ordering::Relaxed) {
+            break "interrupted by operator";
+        }
+        if opts.max_packets.is_some_and(|m| packets >= m) {
+            break "packet limit reached";
+        }
+        if opts.duration.is_some_and(|d| start.elapsed() >= d) {
+            break "duration elapsed";
+        }
+        match cap.next_packet() {
+            Ok(pkt) => {
+                bytes += pkt.header.caplen as u64;
+                packets += 1;
+                savefile.write(&pkt);
+            }
+            Err(pcap::Error::TimeoutExpired) | Err(pcap::Error::NoMorePackets) => {
+                // Non-blocking mode returns immediately; yield instead of spinning.
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => {
+                savefile.flush().ok();
+                return Err(anyhow::Error::new(e).context("read from capture device"));
+            }
+        }
+    };
+
+    savefile.flush().context("flush savefile")?;
+    drop(savefile);
+
+    let s = cap.stats().unwrap_or(pcap::Stat {
+        received: 0,
+        dropped: 0,
+        if_dropped: 0,
+    });
+    if s.dropped > 0 || s.if_dropped > 0 {
+        tracing::warn!(
+            kernel = s.dropped,
+            interface = s.if_dropped,
+            "packets were dropped; this capture has gaps"
+        );
+    }
+
+    Ok(CaptureStats {
+        device: opts.device.clone(),
+        filter: opts.filter.clone(),
+        promiscuous: opts.promiscuous,
+        snaplen: opts.snaplen,
+        datalink,
+        started_utc,
+        finished_utc: now_utc(),
+        packets_written: packets,
+        bytes_written: bytes,
+        packets_dropped_kernel: s.dropped as u64,
+        packets_dropped_interface: s.if_dropped as u64,
+        stop_reason: stop_reason.into(),
+    })
+}
