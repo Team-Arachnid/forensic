@@ -213,3 +213,20 @@ pub struct Flow {
     /// stopped early. Indicators from this flow may be incomplete.
     pub truncated: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PcapAnalysis {
+    pub schema_version: String,
+    pub source: String,
+    pub source_sha256: Option<String>,
+    pub datalink: String,
+    pub packets: u64,
+    pub bytes: u64,
+    /// Frames the decoder could not parse: malformed, truncated by snaplen, or a
+    /// link type this build does not handle. Reported, never silently dropped.
+    pub decode_errors: u64,
+    pub first_packet_utc: Option<String>,
+    pub last_packet_utc: Option<String>,
+    pub flows: Vec<Flow>,
+    pub indicators: Vec<Indicator>,
+}
