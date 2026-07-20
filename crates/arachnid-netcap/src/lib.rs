@@ -230,3 +230,10 @@ pub struct PcapAnalysis {
     pub flows: Vec<Flow>,
     pub indicators: Vec<Indicator>,
 }
+
+#[derive(Debug, Clone)]
+pub struct ParseOptions {
+    pub max_stream_bytes: usize,
+    /// BPF filter applied to the savefile, same syntax as live capture.
+    pub filter: Option<String>,
+}
