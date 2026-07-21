@@ -441,3 +441,19 @@ fn decode(data: &[u8]) -> Result<Option<Decoded>, etherparse::err::packet::Slice
         _ => None,
     })
 }
+
+pub(crate) fn unix_to_utc(secs: i64) -> String {
+    time::OffsetDateTime::from_unix_timestamp(secs)
+        .ok()
+        .and_then(|t| {
+            t.format(&time::format_description::well_known::Rfc3339)
+                .ok()
+        })
+        .unwrap_or_else(|| format!("@{secs}"))
+}
+
+fn now_utc() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into())
+}
