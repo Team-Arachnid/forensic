@@ -397,3 +397,47 @@ fn strip_link_layer(dl: pcap::Linktype, data: &[u8]) -> Option<&[u8]> {
         _ => None,
     }
 }
+
+fn decode(data: &[u8]) -> Result<Option<Decoded>, etherparse::err::packet::SliceError> {
+    use etherparse::{NetSlice, SlicedPacket, TransportSlice};
+
+    // A raw-IP link type has no Ethernet header; version-sniff the first nibble.
+    let sliced = match data.first().map(|b| b >> 4) {
+        Some(4) | Some(6) => SlicedPacket::from_ip(data)?,
+        _ => SlicedPacket::from_ethernet(data)?,
+    };
+
+    let (src_addr, dst_addr) = match &sliced.net {
+        Some(NetSlice::Ipv4(v4)) => (
+            std::net::IpAddr::from(v4.header().source()).to_string(),
+            std::net::IpAddr::from(v4.header().destination()).to_string(),
+        ),
+        Some(NetSlice::Ipv6(v6)) => (
+            std::net::IpAddr::from(v6.header().source()).to_string(),
+            std::net::IpAddr::from(v6.header().destination()).to_string(),
+        ),
+        _ => return Ok(None),
+    };
+
+    Ok(match &sliced.transport {
+        Some(TransportSlice::Tcp(tcp)) => Some(Decoded {
+            proto: 6,
+            src_addr,
+            dst_addr,
+            src_port: tcp.source_port(),
+            dst_port: tcp.destination_port(),
+            seq: tcp.sequence_number(),
+            payload: tcp.payload().to_vec(),
+        }),
+        Some(TransportSlice::Udp(udp)) => Some(Decoded {
+            proto: 17,
+            src_addr,
+            dst_addr,
+            src_port: udp.source_port(),
+            dst_port: udp.destination_port(),
+            seq: 0,
+            payload: udp.payload().to_vec(),
+        }),
+        _ => None,
+    })
+}
