@@ -367,3 +367,33 @@ pub fn parse_pcap(path: &Path, opts: &ParseOptions) -> Result<PcapAnalysis> {
         indicators: collector.finish(),
     })
 }
+
+fn arachnid_schema_version() -> String {
+    "1.0.0".into()
+}
+
+/// What one packet contributes to the flow table and the indicator collector.
+pub(crate) struct Decoded {
+    pub proto: u8,
+    pub src_addr: String,
+    pub dst_addr: String,
+    pub src_port: u16,
+    pub dst_port: u16,
+    pub seq: u32,
+    pub payload: Vec<u8>,
+}
+
+/// Drop the link-layer header, yielding the network-layer bytes.
+///
+/// Returns `None` for a link type this build does not decode, so the frame is
+/// counted as a decode error rather than being misparsed into a phantom flow.
+fn strip_link_layer(dl: pcap::Linktype, data: &[u8]) -> Option<&[u8]> {
+    match dl.0 {
+        1 => Some(data),             // Ethernet: etherparse handles the header
+        101 | 12 | 14 => Some(data), // Raw IP
+        113 => data.get(16..),       // Linux cooked capture v1 (the "any" device)
+        276 => data.get(20..),       // Linux cooked capture v2
+        0 => data.get(4..),          // BSD loopback: 4-byte address family
+        _ => None,
+    }
+}
