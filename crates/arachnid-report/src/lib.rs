@@ -8,3 +8,31 @@
 use std::fmt::Write as _;
 
 use anyhow::Result;
+use arachnid_collect::{Collection, MemoryAcquisition};
+use arachnid_evidence::Manifest;
+use arachnid_netcap::{CaptureStats, PcapAnalysis};
+use serde::{Deserialize, Serialize};
+
+/// Bumped on any incompatible change to [`Report`]. Consumers must reject a
+/// major version they do not know.
+pub const REPORT_SCHEMA_VERSION: &str = "1.0.0";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Report {
+    pub schema_version: String,
+    pub manifest: Manifest,
+    /// Present for a `collect` run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collection: Option<Collection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<MemoryAcquisition>,
+    /// Present for a `capture` run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capture: Option<CaptureStats>,
+    /// Present for a `parse-pcap` run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pcap: Option<PcapAnalysis>,
+    /// `name` -> SHA-256, mirroring the custody log for quick reference. The
+    /// custody log remains the authority; this is a convenience view.
+    pub artifacts: Vec<ArtifactRef>,
+}
