@@ -36,3 +36,23 @@ pub struct Report {
     /// custody log remains the authority; this is a convenience view.
     pub artifacts: Vec<ArtifactRef>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtifactRef {
+    pub name: String,
+    pub sha256: String,
+}
+
+impl Report {
+    pub fn new(manifest: Manifest) -> Self {
+        Report {
+            schema_version: REPORT_SCHEMA_VERSION.into(),
+            manifest,
+            collection: None,
+            memory: None,
+            capture: None,
+            pcap: None,
+            artifacts: Vec::new(),
+        }
+    }
+}
