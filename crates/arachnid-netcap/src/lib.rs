@@ -246,3 +246,124 @@ impl Default for ParseOptions {
         }
     }
 }
+
+/// Key identifying one direction of a conversation.
+type FlowKey = (u8, String, u16, String, u16);
+
+/// Parse a PCAP or PCAPNG savefile: build the flow table, reassemble TCP
+/// streams, and extract indicators. Read-only against the input file.
+pub fn parse_pcap(path: &Path, opts: &ParseOptions) -> Result<PcapAnalysis> {
+    let mut cap = pcap::Capture::from_file(path)
+        .with_context(|| format!("open savefile {}", path.display()))?;
+    if let Some(f) = &opts.filter {
+        cap.filter(f, true)
+            .with_context(|| format!("apply BPF filter {f:?}"))?;
+    }
+    let datalink = cap.get_datalink();
+    let datalink_name = format!("{datalink:?}");
+
+    let mut flows: HashMap<FlowKey, Flow> = HashMap::new();
+    let mut assemblers: HashMap<FlowKey, StreamAssembler> = HashMap::new();
+    let mut collector = indicators::Collector::default();
+    let mut packets = 0u64;
+    let mut bytes = 0u64;
+    let mut decode_errors = 0u64;
+    let mut first_ts = None;
+    let mut last_ts = None;
+
+    loop {
+        let pkt = match cap.next_packet() {
+            Ok(p) => p,
+            Err(pcap::Error::NoMorePackets) => break,
+            Err(e) => return Err(anyhow::Error::new(e).context("read savefile")),
+        };
+        packets += 1;
+        bytes += pkt.header.caplen as u64;
+        // tv_sec is 64-bit on Linux and 32-bit on Windows, so one target always
+        // sees this widening as redundant. Keep it: dropping it breaks the other.
+        #[allow(clippy::useless_conversion)]
+        let ts = i64::from(pkt.header.ts.tv_sec);
+        first_ts.get_or_insert(ts);
+        last_ts = Some(ts);
+        let ts_str = unix_to_utc(ts);
+
+        let Some(payload) = strip_link_layer(datalink, pkt.data) else {
+            decode_errors += 1;
+            continue;
+        };
+        let Ok(parsed) = decode(payload) else {
+            decode_errors += 1;
+            continue;
+        };
+        let Some(d) = parsed else {
+            // Non-IP frame (ARP, LLDP). Not an error, just not a flow.
+            continue;
+        };
+
+        collector.observe_addresses(&d.src_addr, &d.dst_addr, &ts_str);
+
+        let key: FlowKey = (
+            d.proto,
+            d.src_addr.clone(),
+            d.src_port,
+            d.dst_addr.clone(),
+            d.dst_port,
+        );
+        let flow = flows.entry(key.clone()).or_insert_with(|| Flow {
+            protocol: if d.proto == 6 { "tcp" } else { "udp" }.into(),
+            src_addr: d.src_addr.clone(),
+            src_port: d.src_port,
+            dst_addr: d.dst_addr.clone(),
+            dst_port: d.dst_port,
+            packets: 0,
+            bytes: 0,
+            first_seen_utc: ts_str.clone(),
+            last_seen_utc: ts_str.clone(),
+            reassembled_bytes: 0,
+            truncated: false,
+        });
+        flow.packets += 1;
+        flow.bytes += pkt.header.caplen as u64;
+        flow.last_seen_utc = ts_str.clone();
+
+        if d.proto == 17 {
+            // UDP carries its indicators per-datagram; DNS is the one that matters.
+            collector.observe_udp(&d, &ts_str);
+        } else if !d.payload.is_empty() {
+            assemblers
+                .entry(key)
+                .or_insert_with(|| StreamAssembler::new(d.seq, opts.max_stream_bytes))
+                .push(d.seq, &d.payload);
+        }
+    }
+
+    for (key, asm) in assemblers {
+        let data = asm.finish();
+        if let Some(flow) = flows.get_mut(&key) {
+            flow.reassembled_bytes = data.len() as u64;
+            flow.truncated = asm.truncated;
+        }
+        let ts = flows
+            .get(&key)
+            .map(|f| f.first_seen_utc.clone())
+            .unwrap_or_default();
+        collector.observe_stream(&key.1, key.2, &key.3, key.4, &data, &ts);
+    }
+
+    let mut flows: Vec<Flow> = flows.into_values().collect();
+    flows.sort_by(|a, b| b.bytes.cmp(&a.bytes).then(a.src_addr.cmp(&b.src_addr)));
+
+    Ok(PcapAnalysis {
+        schema_version: arachnid_schema_version(),
+        source: path.display().to_string(),
+        source_sha256: None,
+        datalink: datalink_name,
+        packets,
+        bytes,
+        decode_errors,
+        first_packet_utc: first_ts.map(unix_to_utc),
+        last_packet_utc: last_ts.map(unix_to_utc),
+        flows,
+        indicators: collector.finish(),
+    })
+}
