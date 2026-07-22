@@ -64,4 +64,8 @@ impl Report {
             });
         }
     }
+
+    pub fn to_json(&self) -> Result<Vec<u8>> {
+        Ok(serde_json::to_vec_pretty(self)?)
+    }
 }
