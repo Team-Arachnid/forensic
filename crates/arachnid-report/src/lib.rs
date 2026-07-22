@@ -394,3 +394,41 @@ code {{ font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em;
         body
     )
 }
+
+fn esc(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Escape, then re-apply the two inline markers the summary actually uses.
+fn inline(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let escaped = esc(s);
+    let mut rest = escaped.as_str();
+
+    while let Some(i) = rest.find('`') {
+        out.push_str(&rest[..i]);
+        match rest[i + 1..].find('`') {
+            Some(j) => {
+                out.push_str(&format!("<code>{}</code>", &rest[i + 1..i + 1 + j]));
+                rest = &rest[i + j + 2..];
+            }
+            None => {
+                rest = &rest[i..];
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+
+    // Bold is only ever used around a whole number in this summary.
+    while let Some(i) = out.find("**") {
+        let Some(j) = out[i + 2..].find("**") else {
+            break;
+        };
+        let inner = out[i + 2..i + 2 + j].to_string();
+        out.replace_range(i..i + j + 4, &format!("<strong>{inner}</strong>"));
+    }
+    out
+}
