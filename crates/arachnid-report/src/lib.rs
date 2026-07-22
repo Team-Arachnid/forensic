@@ -318,3 +318,79 @@ pub fn to_markdown(r: &Report) -> String {
     }
     s
 }
+
+/// Wrap the Markdown summary in a self-contained HTML page. No external assets:
+/// an evidence report must render on an air-gapped analysis workstation.
+pub fn to_html(r: &Report) -> String {
+    let md = to_markdown(r);
+    let mut body = String::new();
+    let mut in_table = false;
+
+    let flush_table = |body: &mut String, in_table: &mut bool| {
+        if *in_table {
+            body.push_str("</table>\n");
+            *in_table = false;
+        }
+    };
+
+    for line in md.lines() {
+        let t = line.trim();
+        if t.starts_with("|---") {
+            continue; // Markdown alignment row; HTML needs no equivalent.
+        }
+        if let Some(row) = t.strip_prefix('|').and_then(|x| x.strip_suffix('|')) {
+            if !in_table {
+                body.push_str("<table>\n");
+                in_table = true;
+            }
+            body.push_str("<tr>");
+            for cell in row.split('|') {
+                body.push_str(&format!("<td>{}</td>", inline(cell.trim())));
+            }
+            body.push_str("</tr>\n");
+            continue;
+        }
+        flush_table(&mut body, &mut in_table);
+        if let Some(h) = t.strip_prefix("### ") {
+            body.push_str(&format!("<h3>{}</h3>\n", esc(h)));
+        } else if let Some(h) = t.strip_prefix("## ") {
+            body.push_str(&format!("<h2>{}</h2>\n", esc(h)));
+        } else if let Some(h) = t.strip_prefix("# ") {
+            body.push_str(&format!("<h1>{}</h1>\n", esc(h)));
+        } else if let Some(li) = t.strip_prefix("- ") {
+            body.push_str(&format!("<p class=\"li\">• {}</p>\n", inline(li)));
+        } else if !t.is_empty() {
+            body.push_str(&format!("<p>{}</p>\n", inline(t)));
+        }
+    }
+    flush_table(&mut body, &mut in_table);
+
+    format!(
+        r#"<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arachnid Forensic — {}</title>
+<style>
+:root {{ color-scheme: light dark; }}
+body {{ font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+       max-width: 62rem; margin: 2rem auto; padding: 0 1.25rem; }}
+h1 {{ font-size: 1.6rem; border-bottom: 2px solid currentColor; padding-bottom: .4rem; }}
+h2 {{ font-size: 1.2rem; margin-top: 2rem; }}
+h3 {{ font-size: 1rem; }}
+table {{ border-collapse: collapse; width: 100%; margin: .75rem 0; font-size: .88rem;
+        display: block; overflow-x: auto; }}
+td {{ border: 1px solid rgba(128,128,128,.4); padding: .3rem .55rem; text-align: left;
+     vertical-align: top; }}
+tr:first-child td {{ font-weight: 600; background: rgba(128,128,128,.12); }}
+code {{ font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em;
+       background: rgba(128,128,128,.15); padding: .1em .35em; border-radius: 3px;
+       word-break: break-all; }}
+.li {{ margin: .2rem 0; }}
+</style></head><body>
+{}
+</body></html>
+"#,
+        esc(&r.manifest.container_id),
+        body
+    )
+}
