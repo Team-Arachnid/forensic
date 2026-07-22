@@ -55,4 +55,13 @@ impl Report {
             artifacts: Vec::new(),
         }
     }
+
+    pub fn artifact(&mut self, name: &str, sha256: String) {
+        if !sha256.is_empty() {
+            self.artifacts.push(ArtifactRef {
+                name: name.into(),
+                sha256,
+            });
+        }
+    }
 }
