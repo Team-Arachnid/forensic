@@ -1,0 +1,10 @@
+[package]
+name = "arachnid-core-cli"
+description = "Arachnid Core: live triage and network forensics for authorized DFIR use."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
