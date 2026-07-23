@@ -467,3 +467,46 @@ fn is_routable(addr: &str) -> bool {
         Err(_) => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest() -> Manifest {
+        Manifest {
+            schema_version: "1.0.0".into(),
+            tool: "arachnid-core".into(),
+            tool_version: "0.1.0".into(),
+            container_id: "deadbeef".into(),
+            created_utc: "2026-01-01T00:00:00Z".into(),
+            operator: "analyst".into(),
+            host: "host-1".into(),
+            platform: "linux/x86_64".into(),
+            public_key: "ab".repeat(32),
+        }
+    }
+
+    #[test]
+    fn routable_classification() {
+        for a in ["8.8.8.8", "1.1.1.1", "2606:4700::1111"] {
+            assert!(is_routable(a), "{a} should be routable");
+        }
+        for a in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "192.168.1.1",
+            "172.16.0.1",
+            "169.254.1.1",
+            "100.64.0.1",
+            "224.0.0.1",
+            "0.0.0.0",
+            "::1",
+            "fe80::1",
+            "fd00::1",
+            "*",
+            "",
+        ] {
+            assert!(!is_routable(a), "{a} should not be routable");
+        }
+    }
+}
