@@ -553,4 +553,10 @@ mod tests {
         assert!(to_html(&r).contains("<h1>"));
         assert!(r.to_json().is_ok());
     }
+
+    #[test]
+    fn pipes_in_values_do_not_break_the_table() {
+        assert_eq!(truncate("a|b", 10), "a\\|b");
+        assert!(truncate(&"x".repeat(100), 10).ends_with('…'));
+    }
 }
