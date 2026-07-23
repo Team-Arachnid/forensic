@@ -532,4 +532,25 @@ mod tests {
         assert!(!html.contains("<script>"), "unescaped script tag in report");
         assert!(html.contains("&lt;script&gt;"));
     }
+
+    #[test]
+    fn html_renders_tables_and_code() {
+        let mut r = Report::new(manifest());
+        r.artifact("processes.json", "ff".repeat(32));
+        let html = to_html(&r);
+        assert!(html.contains("<table>") && html.contains("</table>"));
+        assert!(html.contains("<code>processes.json</code>"), "{html}");
+        assert_eq!(
+            html.matches("<table>").count(),
+            html.matches("</table>").count()
+        );
+    }
+
+    #[test]
+    fn empty_report_still_renders() {
+        let r = Report::new(manifest());
+        assert!(to_markdown(&r).contains("deadbeef"));
+        assert!(to_html(&r).contains("<h1>"));
+        assert!(r.to_json().is_ok());
+    }
 }
