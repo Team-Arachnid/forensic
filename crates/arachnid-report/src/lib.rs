@@ -432,3 +432,11 @@ fn inline(s: &str) -> String {
     }
     out
 }
+
+fn truncate(s: &str, n: usize) -> String {
+    if s.chars().count() <= n {
+        return s.replace('|', "\\|");
+    }
+    let cut: String = s.chars().take(n).collect();
+    format!("{}…", cut.replace('|', "\\|"))
+}
