@@ -440,3 +440,30 @@ fn truncate(s: &str, n: usize) -> String {
     let cut: String = s.chars().take(n).collect();
     format!("{}…", cut.replace('|', "\\|"))
 }
+
+/// Excludes loopback, link-local, private, multicast, and unspecified addresses:
+/// what remains is traffic that actually left the network.
+fn is_routable(addr: &str) -> bool {
+    use std::net::IpAddr;
+    match addr.parse::<IpAddr>() {
+        Ok(IpAddr::V4(v4)) => {
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.is_unspecified()
+                // 100.64.0.0/10, carrier-grade NAT: not routable on the public internet.
+                || (v4.octets()[0] == 100 && (64..128).contains(&v4.octets()[1])))
+        }
+        Ok(IpAddr::V6(v6)) => {
+            !(v6.is_loopback()
+                || v6.is_multicast()
+                || v6.is_unspecified()
+                // fe80::/10 link-local and fc00::/7 unique-local.
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
+                || (v6.segments()[0] & 0xfe00) == 0xfc00)
+        }
+        Err(_) => false,
+    }
+}
