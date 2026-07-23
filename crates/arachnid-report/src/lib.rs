@@ -509,4 +509,27 @@ mod tests {
             assert!(!is_routable(a), "{a} should not be routable");
         }
     }
+
+    #[test]
+    fn markdown_reports_collection_gaps_prominently() {
+        let mut r = Report::new(manifest());
+        r.collection = Some(Collection {
+            warnings: vec!["sessions: permission denied".into()],
+            ..Default::default()
+        });
+        let md = to_markdown(&r);
+        assert!(md.contains("Collection gaps"), "{md}");
+        assert!(md.contains("sessions: permission denied"));
+        // The gap section must precede the counts it qualifies.
+        assert!(md.find("Collection gaps") < md.find("## Summary"));
+    }
+
+    #[test]
+    fn html_escapes_hostile_content() {
+        let mut m = manifest();
+        m.host = "<script>alert(1)</script>".into();
+        let html = to_html(&Report::new(m));
+        assert!(!html.contains("<script>"), "unescaped script tag in report");
+        assert!(html.contains("&lt;script&gt;"));
+    }
 }
