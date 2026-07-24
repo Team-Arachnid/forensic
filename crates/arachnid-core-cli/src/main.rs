@@ -33,3 +33,36 @@ mod exit {
     /// The run produced evidence, but at least one collector was degraded.
     pub const PARTIAL: u8 = 4;
 }
+
+#[derive(Parser)]
+#[command(
+    name = "arachnid-core",
+    version,
+    about = "Arachnid Core — live triage and network forensics (Arachnid Forensic suite)",
+    long_about = "Arachnid Core collects volatile system state and network evidence into a \
+tamper-evident, signed container.\n\n\
+Read-only against the target: the only writes go to the evidence container you name.\n\n\
+EXIT CODES\n  \
+0  success\n  \
+1  runtime error\n  \
+2  usage error\n  \
+3  integrity failure (verify found a problem)\n  \
+4  completed, but one or more collectors were degraded (see report warnings)"
+)]
+struct Cli {
+    /// Operational log destination. Distinct from the evidence log, which always
+    /// lives in the container and is never written here.
+    #[arg(long, global = true, value_name = "PATH")]
+    log: Option<PathBuf>,
+
+    /// Operational log verbosity.
+    #[arg(long, global = true, default_value = "info", value_name = "LEVEL")]
+    log_level: String,
+
+    /// Emit machine-readable JSON on stdout instead of a human summary.
+    #[arg(long, global = true)]
+    json: bool,
+
+    #[command(subcommand)]
+    command: Command,
+}
