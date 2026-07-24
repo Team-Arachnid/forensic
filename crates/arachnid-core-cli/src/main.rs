@@ -24,4 +24,6 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 mod exit {
     /// Everything requested completed.
     pub const OK: u8 = 0;
+    /// Runtime failure: I/O, permission, missing device, unusable input.
+    pub const ERROR: u8 = 1;
 }
