@@ -9,3 +9,19 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::{bail, Context, Result};
+use arachnid_collect as collect;
+use arachnid_evidence::{Container, VerifyReport};
+use arachnid_netcap as netcap;
+use arachnid_report::{to_html, to_markdown, Report};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+
+/// Exit codes, stable across releases so SOAR playbooks can branch on them.
+mod exit {
+    /// Everything requested completed.
+    pub const OK: u8 = 0;
+}
