@@ -30,4 +30,6 @@ mod exit {
     pub const _USAGE: u8 = 2;
     /// Integrity failure. `verify` found a container that does not check out.
     pub const INTEGRITY: u8 = 3;
+    /// The run produced evidence, but at least one collector was degraded.
+    pub const PARTIAL: u8 = 4;
 }
