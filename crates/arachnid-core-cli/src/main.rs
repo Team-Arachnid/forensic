@@ -26,4 +26,6 @@ mod exit {
     pub const OK: u8 = 0;
     /// Runtime failure: I/O, permission, missing device, unusable input.
     pub const ERROR: u8 = 1;
+    /// Reserved: clap uses 2 for argument and usage errors.
+    pub const _USAGE: u8 = 2;
 }
