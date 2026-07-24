@@ -8,3 +8,7 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[[bin]]
+name = "arachnid-core"
+path = "src/main.rs"
+
