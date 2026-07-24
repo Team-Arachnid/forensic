@@ -28,4 +28,6 @@ mod exit {
     pub const ERROR: u8 = 1;
     /// Reserved: clap uses 2 for argument and usage errors.
     pub const _USAGE: u8 = 2;
+    /// Integrity failure. `verify` found a container that does not check out.
+    pub const INTEGRITY: u8 = 3;
 }
