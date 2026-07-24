@@ -12,3 +12,14 @@ authors.workspace = true
 name = "arachnid-core"
 path = "src/main.rs"
 
+[dependencies]
+anyhow.workspace = true
+arachnid-collect.workspace = true
+arachnid-evidence.workspace = true
+arachnid-netcap.workspace = true
+arachnid-report.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+clap = { version = "4.6", features = ["derive"] }
+ctrlc = "3.5"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
