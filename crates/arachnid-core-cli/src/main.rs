@@ -258,3 +258,13 @@ fn init_logging(cli: &Cli) -> Result<()> {
     }
     Ok(())
 }
+
+fn run(cli: &Cli) -> Result<u8> {
+    match &cli.command {
+        Command::Collect(a) => cmd_collect(cli, a),
+        Command::Capture(a) => cmd_capture(cli, a),
+        Command::ParsePcap(a) => cmd_parse_pcap(cli, a),
+        Command::Verify(a) => cmd_verify(cli, a),
+        Command::Report(a) => cmd_report(cli, a),
+    }
+}
