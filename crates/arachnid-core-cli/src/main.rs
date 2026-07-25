@@ -80,3 +80,25 @@ enum Command {
     /// Re-render the human-readable summary from a container's JSON report.
     Report(ReportArgs),
 }
+
+#[derive(Args)]
+struct ContainerArgs {
+    /// Directory to create for this run's evidence container.
+    #[arg(short, long, value_name = "DIR")]
+    output: PathBuf,
+
+    /// Operator identity recorded in every custody entry.
+    /// Defaults to the invoking user.
+    #[arg(long, value_name = "NAME")]
+    operator: Option<String>,
+
+    /// Ed25519 signing key: a file holding a 32-byte seed, raw or hex.
+    /// Without it a key is generated for this run alone; record the fingerprint
+    /// printed at the end, or the container cannot be trusted later.
+    #[arg(long, value_name = "PATH")]
+    signing_key: Option<PathBuf>,
+
+    /// Run every collector and compute every hash, but write nothing to disk.
+    #[arg(long)]
+    dry_run: bool,
+}
