@@ -199,3 +199,10 @@ struct ReportArgs {
     #[arg(short, long, value_name = "PATH")]
     output: Option<PathBuf>,
 }
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ReportFormat {
+    Markdown,
+    Html,
+    Json,
+}
