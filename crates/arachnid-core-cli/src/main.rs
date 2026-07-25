@@ -223,3 +223,38 @@ fn main() -> ExitCode {
         }
     }
 }
+
+/// Operational log: stderr by default, or appended to `--log`. Never the same
+/// stream as the evidence log, which lives inside the container.
+fn init_logging(cli: &Cli) -> Result<()> {
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let filter = EnvFilter::try_from_env("ARACHNID_LOG")
+        .or_else(|_| EnvFilter::try_new(&cli.log_level))
+        .context("invalid --log-level")?;
+
+    match &cli.log {
+        Some(path) => {
+            if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                std::fs::create_dir_all(parent)?;
+            }
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .with_context(|| format!("open operational log {}", path.display()))?;
+            fmt()
+                .with_env_filter(filter)
+                .with_ansi(false)
+                .with_writer(file)
+                .init();
+        }
+        None => {
+            fmt()
+                .with_env_filter(filter)
+                .with_writer(std::io::stderr)
+                .init();
+        }
+    }
+    Ok(())
+}
