@@ -66,3 +66,17 @@ struct Cli {
     #[command(subcommand)]
     command: Command,
 }
+
+#[derive(Subcommand)]
+enum Command {
+    /// Collect volatile system state into a new evidence container.
+    Collect(CollectArgs),
+    /// Capture live network traffic to a PCAP file inside an evidence container.
+    Capture(CaptureArgs),
+    /// Parse an existing PCAP/PCAPNG: flows, TCP streams, indicators.
+    ParsePcap(ParsePcapArgs),
+    /// Re-hash a container's artifacts and check them against its signed log.
+    Verify(VerifyArgs),
+    /// Re-render the human-readable summary from a container's JSON report.
+    Report(ReportArgs),
+}
