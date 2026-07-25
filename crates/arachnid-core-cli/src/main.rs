@@ -125,3 +125,38 @@ struct CollectArgs {
     #[arg(long, value_name = "ARG", num_args = 1..)]
     memory_arg: Vec<String>,
 }
+
+#[derive(Args)]
+struct CaptureArgs {
+    /// List capture devices and exit.
+    #[arg(long, conflicts_with_all = ["device", "output"])]
+    list_devices: bool,
+
+    #[command(flatten)]
+    container: ContainerArgs,
+
+    /// Interface to capture on. See --list-devices.
+    #[arg(short, long, value_name = "NAME")]
+    device: Option<String>,
+
+    /// BPF filter, applied in the kernel (e.g. "tcp port 443 and not host 10.0.0.1").
+    #[arg(short, long, value_name = "BPF")]
+    filter: Option<String>,
+
+    /// Stop after this many seconds.
+    #[arg(long, value_name = "SECS")]
+    duration: Option<u64>,
+
+    /// Stop after this many packets.
+    #[arg(long, value_name = "N")]
+    count: Option<u64>,
+
+    /// Capture frames not addressed to this host. Changes the interface's
+    /// receive mode; it is off by default because that is an observable change.
+    #[arg(long)]
+    promiscuous: bool,
+
+    /// Bytes captured per frame.
+    #[arg(long, default_value_t = 65535, value_name = "BYTES")]
+    snaplen: i32,
+}
