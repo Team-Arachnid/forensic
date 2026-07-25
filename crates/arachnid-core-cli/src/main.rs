@@ -185,3 +185,17 @@ struct VerifyArgs {
     #[arg(value_name = "CONTAINER")]
     container: PathBuf,
 }
+
+#[derive(Args)]
+struct ReportArgs {
+    /// Evidence container directory holding `artifacts/report.json`.
+    #[arg(value_name = "CONTAINER")]
+    container: PathBuf,
+
+    #[arg(long, default_value = "markdown")]
+    format: ReportFormat,
+
+    /// Write to this path instead of stdout.
+    #[arg(short, long, value_name = "PATH")]
+    output: Option<PathBuf>,
+}
