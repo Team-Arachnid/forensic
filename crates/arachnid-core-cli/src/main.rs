@@ -102,3 +102,26 @@ struct ContainerArgs {
     #[arg(long)]
     dry_run: bool,
 }
+
+#[derive(Args)]
+struct CollectArgs {
+    #[command(flatten)]
+    container: ContainerArgs,
+
+    /// Skip hashing on-disk process binaries. Faster; loses image integrity data.
+    #[arg(long)]
+    no_hash_binaries: bool,
+
+    /// External memory acquisition tool (AVML on Linux, WinPmem on Windows).
+    #[arg(long, value_name = "PATH", requires = "memory_tool_sha256")]
+    memory_tool: Option<PathBuf>,
+
+    /// Expected SHA-256 of the acquisition tool. Required with --memory-tool:
+    /// an unverified acquisition binary is never executed.
+    #[arg(long, value_name = "HEX")]
+    memory_tool_sha256: Option<String>,
+
+    /// Extra arguments for the acquisition tool, before the output path.
+    #[arg(long, value_name = "ARG", num_args = 1..)]
+    memory_arg: Vec<String>,
+}
