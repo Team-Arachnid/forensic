@@ -160,3 +160,21 @@ struct CaptureArgs {
     #[arg(long, default_value_t = 65535, value_name = "BYTES")]
     snaplen: i32,
 }
+
+#[derive(Args)]
+struct ParsePcapArgs {
+    /// PCAP or PCAPNG file to analyse. Opened read-only.
+    #[arg(value_name = "PCAP")]
+    input: PathBuf,
+
+    #[command(flatten)]
+    container: ContainerArgs,
+
+    /// BPF filter applied while reading the savefile.
+    #[arg(short, long, value_name = "BPF")]
+    filter: Option<String>,
+
+    /// Per-flow reassembly ceiling in bytes.
+    #[arg(long, default_value_t = netcap::DEFAULT_MAX_STREAM_BYTES, value_name = "BYTES")]
+    max_stream_bytes: usize,
+}
