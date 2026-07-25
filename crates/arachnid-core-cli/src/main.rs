@@ -178,3 +178,10 @@ struct ParsePcapArgs {
     #[arg(long, default_value_t = netcap::DEFAULT_MAX_STREAM_BYTES, value_name = "BYTES")]
     max_stream_bytes: usize,
 }
+
+#[derive(Args)]
+struct VerifyArgs {
+    /// Evidence container directory to verify.
+    #[arg(value_name = "CONTAINER")]
+    container: PathBuf,
+}
