@@ -206,3 +206,20 @@ enum ReportFormat {
     Html,
     Json,
 }
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    if let Err(e) = init_logging(&cli) {
+        eprintln!("error: {e:#}");
+        return ExitCode::from(exit::ERROR);
+    }
+
+    match run(&cli) {
+        Ok(code) => ExitCode::from(code),
+        Err(e) => {
+            tracing::error!(error = %format!("{e:#}"), "command failed");
+            eprintln!("error: {e:#}");
+            ExitCode::from(exit::ERROR)
+        }
+    }
+}
