@@ -268,3 +268,25 @@ fn run(cli: &Cli) -> Result<u8> {
         Command::Report(a) => cmd_report(cli, a),
     }
 }
+
+/// Open a container and record the invocation, so the custody log states what
+/// was asked for as well as what came back.
+fn open_container(c: &ContainerArgs) -> Result<Container> {
+    let operator = c.operator.clone().unwrap_or_else(default_operator);
+    let key = c
+        .signing_key
+        .as_deref()
+        .map(arachnid_evidence::load_signing_key)
+        .transpose()?;
+
+    let mut container = Container::create(&c.output, &operator, key, c.dry_run)?;
+    container.note(format!(
+        "invocation: {}",
+        std::env::args().collect::<Vec<_>>().join(" ")
+    ))?;
+    if c.dry_run {
+        tracing::warn!("dry run: nothing will be written to disk");
+        container.note("dry-run: no artifacts were written")?;
+    }
+    Ok(container)
+}
