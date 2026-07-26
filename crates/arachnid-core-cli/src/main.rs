@@ -297,3 +297,67 @@ fn default_operator() -> String {
         .unwrap_or_else(|_| "unknown".into());
     format!("{user}@{}", std::env::consts::OS)
 }
+
+fn cmd_collect(cli: &Cli, a: &CollectArgs) -> Result<u8> {
+    let mut container = open_container(&a.container)?;
+    let mut report = Report::new(container.manifest().clone());
+
+    tracing::info!("collecting volatile system state");
+    let c = collect::collect_all(collect::Options {
+        hash_binaries: !a.no_hash_binaries,
+    });
+
+    // One artifact per collector: an analyst can hash-verify and cite each
+    // independently, and a downstream tool can consume just the one it needs.
+    report.artifact(
+        "processes.json",
+        container.add_json("processes.json", &c.processes)?,
+    );
+    report.artifact(
+        "connections.json",
+        container.add_json("connections.json", &c.connections)?,
+    );
+    report.artifact(
+        "sessions.json",
+        container.add_json("sessions.json", &c.sessions)?,
+    );
+    report.artifact(
+        "kernel_modules.json",
+        container.add_json("kernel_modules.json", &c.kernel_modules)?,
+    );
+    report.artifact(
+        "persistence.json",
+        container.add_json("persistence.json", &c.persistence)?,
+    );
+    for w in &c.warnings {
+        container.note(format!("collector degraded: {w}"))?;
+    }
+
+    if let Some(tool) = &a.memory_tool {
+        let expected = a
+            .memory_tool_sha256
+            .as_deref()
+            .context("--memory-tool requires --memory-tool-sha256")?;
+        let out = container.artifact_path("memory.raw");
+        if a.container.dry_run {
+            tracing::warn!("dry run: skipping memory acquisition");
+            container.note("dry-run: memory acquisition skipped")?;
+        } else {
+            tracing::info!(tool = %tool.display(), "acquiring physical memory");
+            let acq = collect::acquire_memory(tool, expected, &out, &a.memory_arg)?;
+            report.artifact("memory.raw", container.seal("memory.raw")?);
+            container.note(format!(
+                "memory acquired with {} ({})",
+                acq.tool, acq.tool_sha256
+            ))?;
+            report.memory = Some(acq);
+        }
+    }
+
+    report.collection = Some(c);
+    let partial = report
+        .collection
+        .as_ref()
+        .is_some_and(|c| !c.warnings.is_empty());
+    finish(cli, container, report, partial)
+}
