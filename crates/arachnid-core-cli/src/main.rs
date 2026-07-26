@@ -484,3 +484,15 @@ fn cmd_parse_pcap(cli: &Cli, a: &ParsePcapArgs) -> Result<u8> {
     report.pcap = Some(analysis);
     finish(cli, container, report, degraded)
 }
+
+fn cmd_verify(cli: &Cli, a: &VerifyArgs) -> Result<u8> {
+    let r = arachnid_evidence::verify(&a.container)
+        .with_context(|| format!("verify {}", a.container.display()))?;
+
+    if cli.json {
+        println!("{}", serde_json::to_string_pretty(&r)?);
+    } else {
+        print_verify(&r);
+    }
+    Ok(if r.ok() { exit::OK } else { exit::INTEGRITY })
+}
