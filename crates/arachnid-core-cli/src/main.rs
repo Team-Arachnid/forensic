@@ -444,3 +444,43 @@ fn cmd_capture(cli: &Cli, a: &CaptureArgs) -> Result<u8> {
     report.capture = Some(stats);
     finish(cli, container, report, degraded)
 }
+
+fn cmd_parse_pcap(cli: &Cli, a: &ParsePcapArgs) -> Result<u8> {
+    if !a.input.is_file() {
+        bail!("{} is not a readable file", a.input.display());
+    }
+    let mut container = open_container(&a.container)?;
+    let mut report = Report::new(container.manifest().clone());
+
+    // The source file is evidence in its own right; bind its digest to this
+    // analysis even though the file stays where it is.
+    let (source_hash, size) = arachnid_evidence::sha256_file(&a.input)?;
+    container.note(format!(
+        "source pcap {} sha256={source_hash} size={size}",
+        a.input.display()
+    ))?;
+
+    tracing::info!(input = %a.input.display(), "parsing savefile");
+    let mut analysis = netcap::parse_pcap(
+        &a.input,
+        &netcap::ParseOptions {
+            max_stream_bytes: a.max_stream_bytes,
+            filter: a.filter.clone(),
+        },
+    )?;
+    analysis.source_sha256 = Some(source_hash);
+    tracing::info!(
+        packets = analysis.packets,
+        flows = analysis.flows.len(),
+        indicators = analysis.indicators.len(),
+        "parse finished"
+    );
+
+    report.artifact(
+        "pcap_analysis.json",
+        container.add_json("pcap_analysis.json", &analysis)?,
+    );
+    let degraded = analysis.decode_errors > 0;
+    report.pcap = Some(analysis);
+    finish(cli, container, report, degraded)
+}
