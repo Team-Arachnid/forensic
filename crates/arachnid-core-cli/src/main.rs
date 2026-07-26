@@ -496,3 +496,22 @@ fn cmd_verify(cli: &Cli, a: &VerifyArgs) -> Result<u8> {
     }
     Ok(if r.ok() { exit::OK } else { exit::INTEGRITY })
 }
+
+fn print_verify(r: &VerifyReport) {
+    println!("container:        {}", r.container);
+    println!("schema:           {}", r.schema_version);
+    println!("signing key:      {}", r.public_key);
+    println!("key fingerprint:  {}", r.key_fingerprint);
+    println!("custody records:  {}", r.records);
+    println!("artifacts hashed: {}", r.artifacts_checked);
+    if r.ok() {
+        println!("\nVERIFIED: every artifact matches the signed custody log.");
+        println!("This confirms the container is internally consistent. It is only proof of");
+        println!("origin if the key fingerprint above matches the one recorded at collection.");
+    } else {
+        println!("\nFAILED: {} problem(s).", r.problems.len());
+        for p in &r.problems {
+            println!("  - {p}");
+        }
+    }
+}
