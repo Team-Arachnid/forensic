@@ -361,3 +361,86 @@ fn cmd_collect(cli: &Cli, a: &CollectArgs) -> Result<u8> {
         .is_some_and(|c| !c.warnings.is_empty());
     finish(cli, container, report, partial)
 }
+
+fn cmd_capture(cli: &Cli, a: &CaptureArgs) -> Result<u8> {
+    if a.list_devices {
+        let devices = netcap::list_devices()?;
+        if cli.json {
+            println!("{}", serde_json::to_string_pretty(&devices)?);
+        } else if devices.is_empty() {
+            println!("No capture devices visible. Capture needs root/CAP_NET_RAW on Linux, Npcap on Windows.");
+        } else {
+            for d in &devices {
+                println!(
+                    "{:<20} {}{}",
+                    d.name,
+                    d.addresses.join(", "),
+                    if d.loopback { "  [loopback]" } else { "" }
+                );
+                if let Some(desc) = &d.description {
+                    println!("{:<20} {desc}", "");
+                }
+            }
+        }
+        return Ok(exit::OK);
+    }
+
+    let device = a
+        .device
+        .as_deref()
+        .context("--device is required (see --list-devices)")?;
+    if a.duration.is_none() && a.count.is_none() {
+        tracing::warn!("no --duration or --count: capture runs until interrupted with Ctrl-C");
+    }
+
+    let mut container = open_container(&a.container)?;
+    let mut report = Report::new(container.manifest().clone());
+
+    let opts = netcap::LiveOptions {
+        device: device.to_string(),
+        filter: a.filter.clone(),
+        snaplen: a.snaplen,
+        promiscuous: a.promiscuous,
+        max_packets: a.count,
+        duration: a.duration.map(Duration::from_secs),
+    };
+
+    if a.container.dry_run {
+        tracing::warn!("dry run: not opening a capture handle");
+        container.note(format!("dry-run: would capture on {device}"))?;
+        return finish(cli, container, report, false);
+    }
+
+    // Ctrl-C sets the flag rather than killing the process, so the savefile is
+    // flushed and its digest reaches the custody log. Losing a capture to an
+    // abrupt exit would be losing evidence.
+    let stop = Arc::new(AtomicBool::new(false));
+    let handler_stop = stop.clone();
+    ctrlc::set_handler(move || {
+        handler_stop.store(true, Ordering::Relaxed);
+    })
+    .context("install interrupt handler")?;
+
+    let out = container.artifact_path("capture.pcap");
+    std::fs::create_dir_all(out.parent().unwrap())?;
+    tracing::info!(device, filter = ?a.filter, "starting capture; Ctrl-C to stop");
+
+    let stats = netcap::capture_live(&opts, &out, &stop)?;
+    tracing::info!(
+        packets = stats.packets_written,
+        dropped = stats.packets_dropped_kernel,
+        reason = stats.stop_reason,
+        "capture finished"
+    );
+
+    report.artifact("capture.pcap", container.seal("capture.pcap")?);
+    let degraded = stats.packets_dropped_kernel > 0 || stats.packets_dropped_interface > 0;
+    if degraded {
+        container.note(format!(
+            "capture dropped {} kernel / {} interface packets; evidence has gaps",
+            stats.packets_dropped_kernel, stats.packets_dropped_interface
+        ))?;
+    }
+    report.capture = Some(stats);
+    finish(cli, container, report, degraded)
+}
