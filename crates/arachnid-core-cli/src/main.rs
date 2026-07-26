@@ -515,3 +515,31 @@ fn print_verify(r: &VerifyReport) {
         }
     }
 }
+
+fn cmd_report(_cli: &Cli, a: &ReportArgs) -> Result<u8> {
+    let path = a.container.join("artifacts/report.json");
+    let raw = std::fs::read(&path)
+        .with_context(|| format!("read {} (is this an Arachnid container?)", path.display()))?;
+    let report: Report = serde_json::from_slice(&raw).context("parse report.json")?;
+
+    if report.schema_version.split('.').next() != Some("1") {
+        bail!(
+            "report schema {} is not supported by this build (expected 1.x)",
+            report.schema_version
+        );
+    }
+
+    let rendered = match a.format {
+        ReportFormat::Markdown => to_markdown(&report),
+        ReportFormat::Html => to_html(&report),
+        ReportFormat::Json => String::from_utf8(report.to_json()?)?,
+    };
+    match &a.output {
+        Some(p) => {
+            std::fs::write(p, &rendered).with_context(|| format!("write {}", p.display()))?;
+            tracing::info!(path = %p.display(), "report written");
+        }
+        None => print!("{rendered}"),
+    }
+    Ok(exit::OK)
+}
