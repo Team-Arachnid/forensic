@@ -30,4 +30,15 @@ impl PcapBuilder {
             ts: 1_767_225_600,
         } // 2026-01-01T00:00:00Z
     }
+
+    fn packet(&mut self, frame: &[u8]) {
+        self.bytes.extend_from_slice(&self.ts.to_le_bytes());
+        self.bytes.extend_from_slice(&0u32.to_le_bytes());
+        self.bytes
+            .extend_from_slice(&(frame.len() as u32).to_le_bytes());
+        self.bytes
+            .extend_from_slice(&(frame.len() as u32).to_le_bytes());
+        self.bytes.extend_from_slice(frame);
+        self.ts += 1;
+    }
 }
