@@ -543,3 +543,33 @@ fn cmd_report(_cli: &Cli, a: &ReportArgs) -> Result<u8> {
     }
     Ok(exit::OK)
 }
+
+/// Seal the report into the container and close it.
+///
+/// `report.json` is written last and hashed like any other artifact, so the
+/// summary is covered by the same custody chain as the evidence it describes.
+fn finish(cli: &Cli, mut container: Container, report: Report, partial: bool) -> Result<u8> {
+    let md = to_markdown(&report);
+
+    let json = report.to_json()?;
+    container.add_bytes("report.json", &json)?;
+    container.add_bytes("report.md", md.as_bytes())?;
+    container.add_bytes("report.html", to_html(&report).as_bytes())?;
+
+    let fingerprint = container.key_fingerprint();
+    let root = container.root().to_path_buf();
+    container.finish()?;
+
+    if cli.json {
+        println!("{}", String::from_utf8(json)?);
+    } else {
+        print!("{md}");
+        println!("\n---\n");
+        println!("Evidence container: {}", root.display());
+        println!("Signing key fingerprint: {fingerprint}");
+        println!("Record this fingerprint out-of-band; `verify` can only prove origin against it.");
+        println!("Verify with: arachnid-core verify {}", root.display());
+    }
+
+    Ok(if partial { exit::PARTIAL } else { exit::OK })
+}
