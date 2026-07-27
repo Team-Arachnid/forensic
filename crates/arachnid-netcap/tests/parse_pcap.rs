@@ -41,4 +41,7 @@ impl PcapBuilder {
         self.bytes.extend_from_slice(frame);
         self.ts += 1;
     }
+
+    fn udp(&mut self, src: [u8; 4], sport: u16, dst: [u8; 4], dport: u16, payload: &[u8]) {
+        let mut udp = Vec::new();
 }
