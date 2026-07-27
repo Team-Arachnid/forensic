@@ -44,4 +44,22 @@ impl PcapBuilder {
 
     fn udp(&mut self, src: [u8; 4], sport: u16, dst: [u8; 4], dport: u16, payload: &[u8]) {
         let mut udp = Vec::new();
+        udp.extend_from_slice(&sport.to_be_bytes());
+        udp.extend_from_slice(&dport.to_be_bytes());
+        udp.extend_from_slice(&((payload.len() + 8) as u16).to_be_bytes());
+        udp.extend_from_slice(&0u16.to_be_bytes()); // checksum: optional over IPv4
+        udp.extend_from_slice(payload);
+        self.packet(&frame(src, dst, 17, &udp));
+    }
+
+    fn tcp(
+        &mut self,
+        src: [u8; 4],
+        sport: u16,
+        dst: [u8; 4],
+        dport: u16,
+        seq: u32,
+        payload: &[u8],
+    ) {
+        let mut tcp = Vec::new();
 }
