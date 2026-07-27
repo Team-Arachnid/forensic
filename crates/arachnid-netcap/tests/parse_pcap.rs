@@ -14,3 +14,20 @@ struct PcapBuilder {
     bytes: Vec<u8>,
     ts: u32,
 }
+
+impl PcapBuilder {
+    fn new() -> Self {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&0xa1b2c3d4u32.to_le_bytes()); // magic
+        bytes.extend_from_slice(&2u16.to_le_bytes()); // version major
+        bytes.extend_from_slice(&4u16.to_le_bytes()); // version minor
+        bytes.extend_from_slice(&0i32.to_le_bytes()); // thiszone
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // sigfigs
+        bytes.extend_from_slice(&65535u32.to_le_bytes()); // snaplen
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // LINKTYPE_ETHERNET
+        PcapBuilder {
+            bytes,
+            ts: 1_767_225_600,
+        } // 2026-01-01T00:00:00Z
+    }
+}
