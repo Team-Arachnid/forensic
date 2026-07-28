@@ -106,3 +106,26 @@ fn dns_query(name: &str) -> Vec<u8> {
     m.extend_from_slice(&[0, 0, 1, 0, 1]);
     m
 }
+
+fn client_hello(host: &str) -> Vec<u8> {
+    let mut sni = vec![0x00];
+    sni.extend_from_slice(&(host.len() as u16).to_be_bytes());
+    sni.extend_from_slice(host.as_bytes());
+    let mut list = (sni.len() as u16).to_be_bytes().to_vec();
+    list.extend_from_slice(&sni);
+    let mut ext = vec![0x00, 0x00];
+    ext.extend_from_slice(&(list.len() as u16).to_be_bytes());
+    ext.extend_from_slice(&list);
+
+    let mut body = vec![0x01, 0, 0, 0, 0x03, 0x03];
+    body.extend_from_slice(&[0u8; 32]);
+    body.push(0);
+    body.extend_from_slice(&[0x00, 0x02, 0x13, 0x01, 0x01, 0x00]);
+    body.extend_from_slice(&(ext.len() as u16).to_be_bytes());
+    body.extend_from_slice(&ext);
+
+    let mut rec = vec![0x16, 0x03, 0x01];
+    rec.extend_from_slice(&(body.len() as u16).to_be_bytes());
+    rec.extend_from_slice(&body);
+    rec
+}
