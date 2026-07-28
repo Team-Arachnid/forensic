@@ -82,3 +82,27 @@ impl PcapBuilder {
         p
     }
 }
+
+/// Ethernet II + IPv4 around a transport payload.
+fn frame(src: [u8; 4], dst: [u8; 4], proto: u8, transport: &[u8]) -> Vec<u8> {
+    let mut ip = vec![0x45, 0x00];
+    ip.extend_from_slice(&((20 + transport.len()) as u16).to_be_bytes());
+    ip.extend_from_slice(&[0x00, 0x01, 0x40, 0x00, 64, proto, 0x00, 0x00]);
+    ip.extend_from_slice(&src);
+    ip.extend_from_slice(&dst);
+    ip.extend_from_slice(transport);
+
+    let mut eth = vec![0x02, 0, 0, 0, 0, 0x02, 0x02, 0, 0, 0, 0, 0x01, 0x08, 0x00];
+    eth.extend_from_slice(&ip);
+    eth
+}
+
+fn dns_query(name: &str) -> Vec<u8> {
+    let mut m = vec![0xab, 0xcd, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0];
+    for label in name.split('.') {
+        m.push(label.len() as u8);
+        m.extend_from_slice(label.as_bytes());
+    }
+    m.extend_from_slice(&[0, 0, 1, 0, 1]);
+    m
+}
