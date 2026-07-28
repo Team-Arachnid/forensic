@@ -129,3 +129,13 @@ fn client_hello(host: &str) -> Vec<u8> {
     rec.extend_from_slice(&body);
     rec
 }
+
+fn indicator<'a>(
+    a: &'a arachnid_netcap::PcapAnalysis,
+    kind: &str,
+    value: &str,
+) -> Option<&'a arachnid_netcap::Indicator> {
+    a.indicators
+        .iter()
+        .find(|i| i.kind == kind && i.value == value)
+}
