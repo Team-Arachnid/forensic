@@ -139,3 +139,73 @@ fn indicator<'a>(
         .iter()
         .find(|i| i.kind == kind && i.value == value)
 }
+
+#[test]
+fn a_mixed_capture_yields_flows_and_indicators() {
+    let mut b = PcapBuilder::new();
+
+    b.udp(
+        SRC,
+        51234,
+        [1, 1, 1, 1],
+        53,
+        &dns_query("malware.example.com"),
+    );
+
+    // HTTP request delivered out of order and with a duplicate segment, which is
+    // what reassembly exists to survive.
+    let req =
+        b"GET /payload.bin HTTP/1.1\r\nHost: evil.example\r\nUser-Agent: Arachnid-Test/1.0\r\n\r\n";
+    let (head, tail) = req.split_at(30);
+    b.tcp(SRC, 40001, DST, 80, 1000 + head.len() as u32, tail);
+    b.tcp(SRC, 40001, DST, 80, 1000, head);
+    b.tcp(SRC, 40001, DST, 80, 1000, head); // retransmission
+
+    b.tcp(SRC, 40002, DST, 443, 5000, &client_hello("c2.example.net"));
+
+    let path = b.write("mixed");
+    let a = parse_pcap(&path, &ParseOptions::default()).unwrap();
+
+    assert_eq!(a.packets, 5);
+    assert_eq!(a.decode_errors, 0, "every synthetic frame should decode");
+    assert_eq!(a.first_packet_utc.as_deref(), Some("2026-01-01T00:00:00Z"));
+
+    // udp:53, tcp:80, tcp:443
+    assert_eq!(a.flows.len(), 3, "{:#?}", a.flows);
+    let http_flow = a.flows.iter().find(|f| f.dst_port == 80).unwrap();
+    assert_eq!(http_flow.packets, 3);
+    assert_eq!(
+        http_flow.reassembled_bytes,
+        req.len() as u64,
+        "retransmission should not inflate the stream"
+    );
+    assert!(!http_flow.truncated);
+
+    assert!(
+        indicator(&a, "dns_query", "malware.example.com").is_some(),
+        "{:#?}",
+        a.indicators
+    );
+    assert!(
+        indicator(&a, "tls_sni", "c2.example.net").is_some(),
+        "{:#?}",
+        a.indicators
+    );
+    assert!(
+        indicator(&a, "http_host", "evil.example").is_some(),
+        "{:#?}",
+        a.indicators
+    );
+    assert!(
+        indicator(&a, "http_uri", "/payload.bin").is_some(),
+        "{:#?}",
+        a.indicators
+    );
+    assert!(indicator(&a, "http_user_agent", "Arachnid-Test/1.0").is_some());
+
+    // 93.184.216.34 appears in both TCP flows.
+    assert_eq!(indicator(&a, "ipv4", "93.184.216.34").unwrap().count, 4);
+    assert!(indicator(&a, "ipv4", "1.1.1.1").is_some());
+
+    std::fs::remove_file(&path).unwrap();
+}
