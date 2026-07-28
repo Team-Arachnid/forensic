@@ -236,3 +236,31 @@ fn a_bpf_filter_narrows_the_parse() {
 
     std::fs::remove_file(&path).unwrap();
 }
+
+#[test]
+fn the_reassembly_ceiling_is_reported_not_silent() {
+    let mut b = PcapBuilder::new();
+    let chunk = vec![b'A'; 1000];
+    for i in 0..4u32 {
+        b.tcp(SRC, 40003, DST, 8080, 1 + i * 1000, &chunk);
+    }
+    let path = b.write("truncated");
+
+    let a = parse_pcap(
+        &path,
+        &ParseOptions {
+            max_stream_bytes: 1500,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let flow = &a.flows[0];
+    assert_eq!(flow.reassembled_bytes, 1500);
+    assert!(
+        flow.truncated,
+        "hitting the ceiling must be visible to the analyst"
+    );
+
+    std::fs::remove_file(&path).unwrap();
+}
