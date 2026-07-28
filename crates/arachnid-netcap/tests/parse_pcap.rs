@@ -264,3 +264,13 @@ fn the_reassembly_ceiling_is_reported_not_silent() {
 
     std::fs::remove_file(&path).unwrap();
 }
+
+#[test]
+fn an_empty_capture_is_not_an_error() {
+    let path = PcapBuilder::new().write("empty");
+    let a = parse_pcap(&path, &ParseOptions::default()).unwrap();
+    assert_eq!(a.packets, 0);
+    assert!(a.flows.is_empty() && a.indicators.is_empty());
+    assert!(a.first_packet_utc.is_none());
+    std::fs::remove_file(&path).unwrap();
+}
