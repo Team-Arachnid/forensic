@@ -209,3 +209,30 @@ fn a_mixed_capture_yields_flows_and_indicators() {
 
     std::fs::remove_file(&path).unwrap();
 }
+
+#[test]
+fn a_bpf_filter_narrows_the_parse() {
+    let mut b = PcapBuilder::new();
+    b.udp(SRC, 51234, [1, 1, 1, 1], 53, &dns_query("example.com"));
+    b.tcp(SRC, 40002, DST, 443, 5000, &client_hello("c2.example.net"));
+    let path = b.write("filtered");
+
+    let a = parse_pcap(
+        &path,
+        &ParseOptions {
+            filter: Some("tcp port 443".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(a.packets, 1);
+    assert_eq!(a.flows.len(), 1);
+    assert!(indicator(&a, "tls_sni", "c2.example.net").is_some());
+    assert!(
+        indicator(&a, "dns_query", "example.com").is_none(),
+        "filter should have excluded DNS"
+    );
+
+    std::fs::remove_file(&path).unwrap();
+}
