@@ -274,3 +274,11 @@ fn an_empty_capture_is_not_an_error() {
     assert!(a.first_packet_utc.is_none());
     std::fs::remove_file(&path).unwrap();
 }
+
+#[test]
+fn a_truncated_file_fails_loudly() {
+    let p = std::env::temp_dir().join(format!("arachnid-it-{}-junk.pcap", std::process::id()));
+    std::fs::write(&p, b"not a pcap at all").unwrap();
+    assert!(parse_pcap(&p, &ParseOptions::default()).is_err());
+    std::fs::remove_file(&p).unwrap();
+}
