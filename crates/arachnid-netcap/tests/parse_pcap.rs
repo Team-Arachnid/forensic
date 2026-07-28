@@ -62,4 +62,23 @@ impl PcapBuilder {
         payload: &[u8],
     ) {
         let mut tcp = Vec::new();
+        tcp.extend_from_slice(&sport.to_be_bytes());
+        tcp.extend_from_slice(&dport.to_be_bytes());
+        tcp.extend_from_slice(&seq.to_be_bytes());
+        tcp.extend_from_slice(&0u32.to_be_bytes()); // ack
+        tcp.push(5 << 4); // data offset = 5 words, no options
+        tcp.push(0x18); // PSH | ACK
+        tcp.extend_from_slice(&65535u16.to_be_bytes()); // window
+        tcp.extend_from_slice(&0u16.to_be_bytes()); // checksum
+        tcp.extend_from_slice(&0u16.to_be_bytes()); // urgent
+        tcp.extend_from_slice(payload);
+        self.packet(&frame(src, dst, 6, &tcp));
+    }
+
+    fn write(&self, name: &str) -> PathBuf {
+        let p =
+            std::env::temp_dir().join(format!("arachnid-it-{}-{name}.pcap", std::process::id()));
+        std::fs::write(&p, &self.bytes).unwrap();
+        p
+    }
 }
