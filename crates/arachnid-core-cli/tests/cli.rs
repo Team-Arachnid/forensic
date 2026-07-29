@@ -34,3 +34,11 @@ impl Drop for Workspace {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+
+fn run(args: &[&str]) -> Output {
+    Command::new(BIN)
+        .args(args)
+        .env("ARACHNID_LOG", "warn")
+        .output()
+        .expect("run arachnid-core")
+}
