@@ -24,4 +24,7 @@ impl Workspace {
         std::fs::create_dir_all(&d).unwrap();
         Workspace(d)
     }
+    fn path(&self, name: &str) -> PathBuf {
+        self.0.join(name)
+    }
 }
