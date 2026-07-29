@@ -42,3 +42,11 @@ fn run(args: &[&str]) -> Output {
         .output()
         .expect("run arachnid-core")
 }
+
+fn code(o: &Output) -> i32 {
+    o.status.code().expect("process exited normally")
+}
+
+fn stdout(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
