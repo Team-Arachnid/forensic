@@ -28,3 +28,9 @@ impl Workspace {
         self.0.join(name)
     }
 }
+
+impl Drop for Workspace {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
