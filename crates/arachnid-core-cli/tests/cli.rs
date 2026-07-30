@@ -229,3 +229,15 @@ fn report_re_renders_from_the_container() {
     // Re-rendering must not disturb the container it read from.
     assert_eq!(code(&run(&["verify", &evs])), OK);
 }
+
+#[test]
+fn json_mode_emits_only_json_on_stdout() {
+    let ws = Workspace::new("jsonmode");
+    let ev = ws.path("ev");
+    collect_into(&ev);
+
+    let v = run(&["--json", "verify", &ev.display().to_string()]);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout(&v)).expect("valid JSON on stdout");
+    assert_eq!(parsed["problems"].as_array().unwrap().len(), 0);
+}
