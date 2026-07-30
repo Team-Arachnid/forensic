@@ -168,3 +168,39 @@ fn dry_run_writes_nothing() {
     assert!(matches!(code(&out), OK | 4));
     assert!(!ev.exists(), "dry run created {}", ev.display());
 }
+
+#[test]
+fn a_supplied_signing_key_is_used_and_is_reproducible() {
+    let ws = Workspace::new("key");
+    let key = ws.path("operator.key");
+    std::fs::write(&key, "11".repeat(32)).unwrap();
+
+    let mut fingerprints = Vec::new();
+    for tag in ["a", "b"] {
+        let ev = ws.path(tag);
+        let out = run(&[
+            "collect",
+            "-o",
+            &ev.display().to_string(),
+            "--no-hash-binaries",
+            "--signing-key",
+            &key.display().to_string(),
+            "--operator",
+            "analyst-7",
+        ]);
+        assert!(
+            matches!(code(&out), OK | 4),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(ev.join("manifest.json")).unwrap()).unwrap();
+        assert_eq!(manifest["operator"], "analyst-7");
+        fingerprints.push(manifest["public_key"].as_str().unwrap().to_string());
+
+        assert_eq!(code(&run(&["verify", &ev.display().to_string()])), OK);
+    }
+    // Same key across runs: the two containers are attributable to one operator.
+    assert_eq!(fingerprints[0], fingerprints[1]);
+}
