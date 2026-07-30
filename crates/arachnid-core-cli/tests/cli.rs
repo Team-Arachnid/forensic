@@ -99,3 +99,23 @@ fn collect_produces_a_container_that_verifies() {
         "fingerprint mismatch between collect and verify"
     );
 }
+
+#[test]
+fn a_modified_artifact_fails_verification() {
+    let ws = Workspace::new("tamper");
+    let ev = ws.path("ev");
+    collect_into(&ev);
+
+    let target = ev.join("artifacts/connections.json");
+    let mut data = std::fs::read(&target).unwrap();
+    data.extend_from_slice(b"\n");
+    std::fs::write(&target, data).unwrap();
+
+    let v = run(&["verify", &ev.display().to_string()]);
+    assert_eq!(code(&v), INTEGRITY, "tampering must exit {INTEGRITY}");
+    assert!(
+        stdout(&v).contains("content modified since collection"),
+        "{}",
+        stdout(&v)
+    );
+}
