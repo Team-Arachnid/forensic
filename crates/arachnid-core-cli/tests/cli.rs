@@ -152,3 +152,19 @@ fn a_truncated_custody_log_fails_verification() {
     assert_eq!(code(&v), INTEGRITY);
     assert!(stdout(&v).contains("hash chain broken"), "{}", stdout(&v));
 }
+
+#[test]
+fn dry_run_writes_nothing() {
+    let ws = Workspace::new("dryrun");
+    let ev = ws.path("ev");
+
+    let out = run(&[
+        "collect",
+        "-o",
+        &ev.display().to_string(),
+        "--no-hash-binaries",
+        "--dry-run",
+    ]);
+    assert!(matches!(code(&out), OK | 4));
+    assert!(!ev.exists(), "dry run created {}", ev.display());
+}
