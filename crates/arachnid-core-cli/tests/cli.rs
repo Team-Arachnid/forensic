@@ -50,3 +50,12 @@ fn code(o: &Output) -> i32 {
 fn stdout(o: &Output) -> String {
     String::from_utf8_lossy(&o.stdout).into_owned()
 }
+
+fn collect_into(dir: &Path) -> Output {
+    run(&[
+        "collect",
+        "-o",
+        &dir.display().to_string(),
+        "--no-hash-binaries",
+    ])
+}
