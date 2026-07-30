@@ -131,3 +131,24 @@ fn a_planted_artifact_fails_verification() {
     assert_eq!(code(&v), INTEGRITY);
     assert!(stdout(&v).contains("not in custody log"), "{}", stdout(&v));
 }
+
+#[test]
+fn a_truncated_custody_log_fails_verification() {
+    let ws = Workspace::new("truncate");
+    let ev = ws.path("ev");
+    collect_into(&ev);
+
+    let log = std::fs::read_to_string(ev.join("custody.log")).unwrap();
+    let lines: Vec<&str> = log.lines().collect();
+    let without_middle: Vec<&str> = lines
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != 2)
+        .map(|(_, l)| *l)
+        .collect();
+    std::fs::write(ev.join("custody.log"), without_middle.join("\n") + "\n").unwrap();
+
+    let v = run(&["verify", &ev.display().to_string()]);
+    assert_eq!(code(&v), INTEGRITY);
+    assert!(stdout(&v).contains("hash chain broken"), "{}", stdout(&v));
+}
