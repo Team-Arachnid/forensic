@@ -119,3 +119,15 @@ fn a_modified_artifact_fails_verification() {
         stdout(&v)
     );
 }
+
+#[test]
+fn a_planted_artifact_fails_verification() {
+    let ws = Workspace::new("plant");
+    let ev = ws.path("ev");
+    collect_into(&ev);
+    std::fs::write(ev.join("artifacts/extra.json"), b"{}").unwrap();
+
+    let v = run(&["verify", &ev.display().to_string()]);
+    assert_eq!(code(&v), INTEGRITY);
+    assert!(stdout(&v).contains("not in custody log"), "{}", stdout(&v));
+}
