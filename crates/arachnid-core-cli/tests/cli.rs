@@ -204,3 +204,28 @@ fn a_supplied_signing_key_is_used_and_is_reproducible() {
     // Same key across runs: the two containers are attributable to one operator.
     assert_eq!(fingerprints[0], fingerprints[1]);
 }
+
+#[test]
+fn report_re_renders_from_the_container() {
+    let ws = Workspace::new("report");
+    let ev = ws.path("ev");
+    collect_into(&ev);
+    let evs = ev.display().to_string();
+
+    let md = run(&["report", &evs]);
+    assert_eq!(code(&md), OK);
+    assert!(stdout(&md).contains("Arachnid Forensic"));
+
+    let html = run(&["report", &evs, "--format", "html"]);
+    assert_eq!(code(&html), OK);
+    assert!(stdout(&html).starts_with("<!doctype html>"));
+
+    let json = run(&["report", &evs, "--format", "json"]);
+    assert_eq!(code(&json), OK);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout(&json)).expect("valid JSON");
+    assert_eq!(parsed["schema_version"], "1.0.0");
+    assert!(parsed["collection"]["processes"].as_array().unwrap().len() > 1);
+
+    // Re-rendering must not disturb the container it read from.
+    assert_eq!(code(&run(&["verify", &evs])), OK);
+}
