@@ -59,3 +59,43 @@ fn collect_into(dir: &Path) -> Output {
         "--no-hash-binaries",
     ])
 }
+
+#[test]
+fn collect_produces_a_container_that_verifies() {
+    let ws = Workspace::new("roundtrip");
+    let ev = ws.path("ev");
+
+    let out = collect_into(&ev);
+    assert!(
+        matches!(code(&out), OK | 4),
+        "collect failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    for f in [
+        "manifest.json",
+        "custody.log",
+        "artifacts/processes.json",
+        "artifacts/connections.json",
+        "artifacts/report.json",
+        "artifacts/report.md",
+        "artifacts/report.html",
+    ] {
+        assert!(ev.join(f).exists(), "missing {f}");
+    }
+
+    let v = run(&["verify", &ev.display().to_string()]);
+    assert_eq!(code(&v), OK, "verify failed: {}", stdout(&v));
+    assert!(stdout(&v).contains("VERIFIED"));
+
+    // The fingerprint the operator is told to record must be the one verify reports.
+    let printed = stdout(&out);
+    let fp = printed
+        .lines()
+        .find_map(|l| l.strip_prefix("Signing key fingerprint: "))
+        .expect("collect prints a key fingerprint");
+    assert!(
+        stdout(&v).contains(fp.trim()),
+        "fingerprint mismatch between collect and verify"
+    );
+}
