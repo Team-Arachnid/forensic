@@ -329,3 +329,36 @@ fn capture_without_a_device_is_a_runtime_error() {
     assert_eq!(code(&out), ERROR);
     assert!(String::from_utf8_lossy(&out.stderr).contains("--device is required"));
 }
+
+#[test]
+fn the_operational_log_is_separate_from_the_evidence_log() {
+    let ws = Workspace::new("logs");
+    let ev = ws.path("ev");
+    let oplog = ws.path("operational.log");
+
+    let out = run(&[
+        "--log",
+        &oplog.display().to_string(),
+        "--log-level",
+        "info",
+        "collect",
+        "-o",
+        &ev.display().to_string(),
+        "--no-hash-binaries",
+    ]);
+    assert!(matches!(code(&out), OK | 4));
+    assert!(oplog.exists(), "operational log was not written");
+
+    let op = std::fs::read_to_string(&oplog).unwrap();
+    assert!(op.contains("collecting volatile system state"), "{op}");
+    // The custody log must contain no tracing output, and vice versa.
+    assert!(
+        !op.contains("\"seq\":"),
+        "operational log contains custody records"
+    );
+    let custody = std::fs::read_to_string(ev.join("custody.log")).unwrap();
+    assert!(
+        !custody.contains("INFO"),
+        "custody log contains tracing output"
+    );
+}
