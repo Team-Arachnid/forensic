@@ -241,3 +241,20 @@ fn json_mode_emits_only_json_on_stdout() {
         serde_json::from_str(&stdout(&v)).expect("valid JSON on stdout");
     assert_eq!(parsed["problems"].as_array().unwrap().len(), 0);
 }
+
+#[test]
+fn collecting_into_an_existing_container_is_refused() {
+    let ws = Workspace::new("existing");
+    let ev = ws.path("ev");
+    collect_into(&ev);
+
+    let second = collect_into(&ev);
+    assert_eq!(
+        code(&second),
+        ERROR,
+        "must not append to an existing container"
+    );
+    assert!(String::from_utf8_lossy(&second.stderr).contains("existing container"));
+    // The original evidence is untouched.
+    assert_eq!(code(&run(&["verify", &ev.display().to_string()])), OK);
+}
