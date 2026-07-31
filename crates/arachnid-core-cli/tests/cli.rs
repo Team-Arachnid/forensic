@@ -258,3 +258,29 @@ fn collecting_into_an_existing_container_is_refused() {
     // The original evidence is untouched.
     assert_eq!(code(&run(&["verify", &ev.display().to_string()])), OK);
 }
+
+#[test]
+fn memory_acquisition_refuses_an_unverified_tool() {
+    let ws = Workspace::new("memtool");
+    let ev = ws.path("ev");
+    let tool = ws.path("fake-avml");
+    std::fs::write(&tool, b"#!/bin/sh\nexit 0\n").unwrap();
+
+    let out = run(&[
+        "collect",
+        "-o",
+        &ev.display().to_string(),
+        "--no-hash-binaries",
+        "--memory-tool",
+        &tool.display().to_string(),
+        "--memory-tool-sha256",
+        &"0".repeat(64),
+    ]);
+    assert_eq!(code(&out), ERROR);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("hash mismatch"), "{err}");
+    assert!(
+        !ev.join("artifacts/memory.raw").exists(),
+        "must not run an unverified tool"
+    );
+}
