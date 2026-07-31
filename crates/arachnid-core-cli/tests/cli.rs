@@ -301,3 +301,11 @@ fn memory_tool_without_its_hash_is_a_usage_error() {
         "--memory-tool must require --memory-tool-sha256"
     );
 }
+
+#[test]
+fn verifying_a_nonexistent_container_is_a_runtime_error() {
+    assert_eq!(
+        code(&run(&["verify", "/nonexistent/arachnid-container"])),
+        ERROR
+    );
+}
