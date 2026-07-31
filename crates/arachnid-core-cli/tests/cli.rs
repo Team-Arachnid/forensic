@@ -309,3 +309,15 @@ fn verifying_a_nonexistent_container_is_a_runtime_error() {
         ERROR
     );
 }
+
+#[test]
+fn parse_pcap_rejects_a_missing_input() {
+    let ws = Workspace::new("nopcap");
+    let out = run(&[
+        "parse-pcap",
+        "/nonexistent/capture.pcap",
+        "-o",
+        &ws.path("ev").display().to_string(),
+    ]);
+    assert_eq!(code(&out), ERROR);
+}
