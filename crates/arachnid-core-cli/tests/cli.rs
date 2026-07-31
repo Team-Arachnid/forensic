@@ -321,3 +321,11 @@ fn parse_pcap_rejects_a_missing_input() {
     ]);
     assert_eq!(code(&out), ERROR);
 }
+
+#[test]
+fn capture_without_a_device_is_a_runtime_error() {
+    let ws = Workspace::new("nodev");
+    let out = run(&["capture", "-o", &ws.path("ev").display().to_string()]);
+    assert_eq!(code(&out), ERROR);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--device is required"));
+}
