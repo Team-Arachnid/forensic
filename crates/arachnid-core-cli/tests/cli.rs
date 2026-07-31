@@ -362,3 +362,12 @@ fn the_operational_log_is_separate_from_the_evidence_log() {
         "custody log contains tracing output"
     );
 }
+
+#[test]
+fn help_documents_the_exit_codes() {
+    let h = run(&["--help"]);
+    let text = stdout(&h);
+    for marker in ["EXIT CODES", "integrity failure", "usage error"] {
+        assert!(text.contains(marker), "--help missing {marker:?}");
+    }
+}
