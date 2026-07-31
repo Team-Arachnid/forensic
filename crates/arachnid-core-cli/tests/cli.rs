@@ -284,3 +284,20 @@ fn memory_acquisition_refuses_an_unverified_tool() {
         "must not run an unverified tool"
     );
 }
+
+#[test]
+fn memory_tool_without_its_hash_is_a_usage_error() {
+    let ws = Workspace::new("memnohash");
+    let out = run(&[
+        "collect",
+        "-o",
+        &ws.path("ev").display().to_string(),
+        "--memory-tool",
+        "/bin/true",
+    ]);
+    assert_eq!(
+        code(&out),
+        USAGE,
+        "--memory-tool must require --memory-tool-sha256"
+    );
+}
