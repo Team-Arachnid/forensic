@@ -333,12 +333,27 @@ pub fn verify(root: &Path) -> Result<VerifyReport> {
     )
     .context("parse manifest.json")?;
 
-    let pk_bytes: [u8; 32] = unhex(&manifest.public_key)?
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("public_key is not 32 bytes"))?;
-    let vk = VerifyingKey::from_bytes(&pk_bytes).context("malformed public key")?;
-
     let mut problems = Vec::new();
+
+    // A manifest that parsed but carries an unusable key is a *failed* container,
+    // not an unreadable one: report it as an integrity problem so callers see the
+    // integrity exit code rather than a generic runtime error. Verification then
+    // continues without signature checks, because the hash chain and the artifact
+    // digests still have something to say about what was changed.
+    let pk_bytes: [u8; 32] = unhex(&manifest.public_key)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b).ok())
+        .unwrap_or_else(|| {
+            problems.push("manifest public_key is not 32 hex-encoded bytes".into());
+            [0u8; 32]
+        });
+    let vk = match VerifyingKey::from_bytes(&pk_bytes) {
+        Ok(vk) => Some(vk),
+        Err(_) => {
+            problems.push("manifest public_key is not a valid Ed25519 key".into());
+            None
+        }
+    };
     let mut expect_prev = GENESIS_PREV.to_string();
     let mut expect_seq = 0u64;
     let mut records = 0u64;
@@ -357,12 +372,14 @@ pub fn verify(root: &Path) -> Result<VerifyReport> {
         };
         let (sig_hex, body) = (&line[..sp], &raw[sp + 1..]);
 
-        match unhex(sig_hex)
-            .ok()
-            .and_then(|b| <[u8; 64]>::try_from(b).ok())
-        {
-            Some(sb) if vk.verify(body, &Signature::from_bytes(&sb)).is_ok() => {}
-            _ => problems.push(format!("line {}: signature does not verify", i + 1)),
+        if let Some(vk) = &vk {
+            match unhex(sig_hex)
+                .ok()
+                .and_then(|b| <[u8; 64]>::try_from(b).ok())
+            {
+                Some(sb) if vk.verify(body, &Signature::from_bytes(&sb)).is_ok() => {}
+                _ => problems.push(format!("line {}: signature does not verify", i + 1)),
+            }
         }
 
         let rec: Record = match serde_json::from_slice(body) {
