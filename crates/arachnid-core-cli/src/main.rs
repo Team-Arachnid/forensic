@@ -55,9 +55,9 @@ struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
     log: Option<PathBuf>,
 
-    /// Operational log verbosity.
-    #[arg(long, global = true, default_value = "info", value_name = "LEVEL")]
-    log_level: String,
+    /// Operational log verbosity. Overrides ARACHNID_LOG; defaults to "info".
+    #[arg(long, global = true, value_name = "LEVEL")]
+    log_level: Option<String>,
 
     /// Emit machine-readable JSON on stdout instead of a human summary.
     #[arg(long, global = true)]
@@ -229,9 +229,12 @@ fn main() -> ExitCode {
 fn init_logging(cli: &Cli) -> Result<()> {
     use tracing_subscriber::{fmt, EnvFilter};
 
-    let filter = EnvFilter::try_from_env("ARACHNID_LOG")
-        .or_else(|_| EnvFilter::try_new(&cli.log_level))
-        .context("invalid --log-level")?;
+    // An explicit flag beats the ambient environment: an operator who asks for a
+    // level on the command line gets it regardless of what ARACHNID_LOG holds.
+    let filter = match &cli.log_level {
+        Some(level) => EnvFilter::try_new(level).context("invalid --log-level")?,
+        None => EnvFilter::try_from_env("ARACHNID_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
+    };
 
     match &cli.log {
         Some(path) => {
