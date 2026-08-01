@@ -4,14 +4,21 @@
 //! sequence offset in a `BTreeMap` rather than appended in arrival order. That
 //! sorts the stream, collapses duplicate retransmissions, and makes a gap
 //! visible instead of silently splicing two non-adjacent regions together.
+//!
+//! Offsets are *signed* deltas from the first sequence number seen. The first
+//! segment captured is not necessarily the lowest one — a reordered network or a
+//! capture that starts mid-stream both break that assumption — so a segment
+//! preceding the base gets a negative offset and still sorts into place. Signed
+//! 32-bit arithmetic is also what makes sequence wraparound a non-event, on the
+//! usual TCP assumption that a live window spans well under 2 GiB.
 
 use std::collections::BTreeMap;
 
 pub struct StreamAssembler {
-    /// Sequence number of the first payload byte seen; all offsets are relative
-    /// to it, which is what makes 32-bit sequence wraparound a non-event.
+    /// Sequence number of the first payload byte seen. Offsets are signed deltas
+    /// from it, so a segment that precedes it sorts ahead of it.
     base: u32,
-    segments: BTreeMap<u64, Vec<u8>>,
+    segments: BTreeMap<i64, Vec<u8>>,
     stored: usize,
     limit: usize,
     pub truncated: bool,
@@ -33,9 +40,9 @@ impl StreamAssembler {
             self.truncated |= self.stored >= self.limit;
             return;
         }
-        // Wrapping arithmetic: a stream that crosses the 2^32 boundary keeps
-        // producing increasing offsets instead of jumping back to zero.
-        let offset = seq.wrapping_sub(self.base) as u64;
+        // Signed wrapping delta: handles both a stream crossing the 2^32 boundary
+        // and a segment that arrives before the one we happened to see first.
+        let offset = i64::from(seq.wrapping_sub(self.base) as i32);
         let take = payload.len().min(self.limit - self.stored);
         if take < payload.len() {
             self.truncated = true;
@@ -56,14 +63,17 @@ impl StreamAssembler {
     /// never captured, and inventing filler would be fabricating evidence.
     pub fn finish(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.stored);
-        let mut covered_to = 0u64;
+        let mut covered_to: Option<i64> = None;
         for (&offset, data) in &self.segments {
-            let start = covered_to.saturating_sub(offset) as usize;
+            let start = match covered_to {
+                Some(c) if c > offset => (c - offset) as usize,
+                _ => 0,
+            };
             if start >= data.len() {
                 continue; // fully overlapped by a previous segment
             }
             out.extend_from_slice(&data[start..]);
-            covered_to = covered_to.max(offset + data.len() as u64);
+            covered_to = Some(offset + data.len() as i64);
         }
         out
     }
@@ -117,6 +127,16 @@ mod tests {
         a.push(100, b"hel");
         a.push(100, b"hello");
         assert_eq!(a.finish(), b"hello");
+    }
+
+    #[test]
+    fn a_segment_preceding_the_first_one_seen_still_sorts_first() {
+        // The capture began mid-stream, or the network reordered: the first
+        // segment we saw is not the lowest sequence number.
+        let mut a = asm(106);
+        a.push(106, b"world");
+        a.push(100, b"hello ");
+        assert_eq!(a.finish(), b"hello world");
     }
 
     #[test]
