@@ -7,7 +7,7 @@
 //! to the evidence container the operator names. See `docs/SOC-ALLOWLISTING.md`
 //! for the full list of paths and APIs this binary touches.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -83,10 +83,6 @@ enum Command {
 
 #[derive(Args)]
 struct ContainerArgs {
-    /// Directory to create for this run's evidence container.
-    #[arg(short, long, value_name = "DIR")]
-    output: PathBuf,
-
     /// Operator identity recorded in every custody entry.
     /// Defaults to the invoking user.
     #[arg(long, value_name = "NAME")]
@@ -105,6 +101,10 @@ struct ContainerArgs {
 
 #[derive(Args)]
 struct CollectArgs {
+    /// Directory to create for this run's evidence container.
+    #[arg(short, long, value_name = "DIR")]
+    output: PathBuf,
+
     #[command(flatten)]
     container: ContainerArgs,
 
@@ -131,6 +131,15 @@ struct CaptureArgs {
     /// List capture devices and exit.
     #[arg(long, conflicts_with_all = ["device", "output"])]
     list_devices: bool,
+
+    /// Directory to create for this run's evidence container.
+    #[arg(
+        short,
+        long,
+        value_name = "DIR",
+        required_unless_present = "list_devices"
+    )]
+    output: Option<PathBuf>,
 
     #[command(flatten)]
     container: ContainerArgs,
@@ -166,6 +175,10 @@ struct ParsePcapArgs {
     /// PCAP or PCAPNG file to analyse. Opened read-only.
     #[arg(value_name = "PCAP")]
     input: PathBuf,
+
+    /// Directory to create for this run's evidence container.
+    #[arg(short, long, value_name = "DIR")]
+    output: PathBuf,
 
     #[command(flatten)]
     container: ContainerArgs,
@@ -274,7 +287,7 @@ fn run(cli: &Cli) -> Result<u8> {
 
 /// Open a container and record the invocation, so the custody log states what
 /// was asked for as well as what came back.
-fn open_container(c: &ContainerArgs) -> Result<Container> {
+fn open_container(output: &Path, c: &ContainerArgs) -> Result<Container> {
     let operator = c.operator.clone().unwrap_or_else(default_operator);
     let key = c
         .signing_key
@@ -282,7 +295,7 @@ fn open_container(c: &ContainerArgs) -> Result<Container> {
         .map(arachnid_evidence::load_signing_key)
         .transpose()?;
 
-    let mut container = Container::create(&c.output, &operator, key, c.dry_run)?;
+    let mut container = Container::create(output, &operator, key, c.dry_run)?;
     container.note(format!(
         "invocation: {}",
         std::env::args().collect::<Vec<_>>().join(" ")
@@ -302,7 +315,7 @@ fn default_operator() -> String {
 }
 
 fn cmd_collect(cli: &Cli, a: &CollectArgs) -> Result<u8> {
-    let mut container = open_container(&a.container)?;
+    let mut container = open_container(&a.output, &a.container)?;
     let mut report = Report::new(container.manifest().clone());
 
     tracing::info!("collecting volatile system state");
@@ -396,7 +409,10 @@ fn cmd_capture(cli: &Cli, a: &CaptureArgs) -> Result<u8> {
         tracing::warn!("no --duration or --count: capture runs until interrupted with Ctrl-C");
     }
 
-    let mut container = open_container(&a.container)?;
+    // clap guarantees this is present unless --list-devices was given, which
+    // returned above.
+    let output = a.output.as_deref().expect("clap enforces --output here");
+    let mut container = open_container(output, &a.container)?;
     let mut report = Report::new(container.manifest().clone());
 
     let opts = netcap::LiveOptions {
@@ -452,7 +468,7 @@ fn cmd_parse_pcap(cli: &Cli, a: &ParsePcapArgs) -> Result<u8> {
     if !a.input.is_file() {
         bail!("{} is not a readable file", a.input.display());
     }
-    let mut container = open_container(&a.container)?;
+    let mut container = open_container(&a.output, &a.container)?;
     let mut report = Report::new(container.manifest().clone());
 
     // The source file is evidence in its own right; bind its digest to this
