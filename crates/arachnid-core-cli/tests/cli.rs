@@ -364,6 +364,31 @@ fn the_operational_log_is_separate_from_the_evidence_log() {
 }
 
 #[test]
+fn list_devices_needs_no_evidence_container() {
+    // Regression: --output is required for a real capture but must not be for
+    // listing interfaces, which writes nothing.
+    let out = run(&["capture", "--list-devices"]);
+    assert_eq!(
+        code(&out),
+        OK,
+        "--list-devices should not require -o: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn capture_without_an_output_container_is_a_usage_error() {
+    let out = run(&["capture", "-d", "eth0"]);
+    assert_eq!(code(&out), USAGE);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--output"));
+}
+
+#[test]
+fn collect_without_an_output_container_is_a_usage_error() {
+    assert_eq!(code(&run(&["collect"])), USAGE);
+}
+
+#[test]
 fn help_documents_the_exit_codes() {
     let h = run(&["--help"]);
     let text = stdout(&h);
