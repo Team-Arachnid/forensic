@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arachnid-forensic.org/schema/report-1.0.0.json",
+  "title": "Arachnid Core report",
+  "description": "Primary machine-readable output of a collect, capture, or parse-pcap run. Written to <container>/artifacts/report.json and covered by the container's signed custody log. Consumers MUST reject a schema_version whose major component they do not implement.",
+  "type": "object",
+  "required": ["schema_version", "manifest", "artifacts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this document's shape. 1.0.0 for this release."
+    },
+    "manifest": { "$ref": "#/$defs/manifest" },
+    "collection": { "$ref": "#/$defs/collection" },
+    "memory": { "$ref": "#/$defs/memoryAcquisition" },
+    "capture": { "$ref": "#/$defs/captureStats" },
+    "pcap": { "$ref": "#/$defs/pcapAnalysis" },
+    "artifacts": {
+      "type": "array",
+      "description": "Convenience index of artifact digests. The custody log remains the authority; verify against it, not against this list.",
+      "items": {
+        "type": "object",
+        "required": ["name", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "sha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339, always UTC."
+    },
+    "nullableTimestamp": { "type": ["string", "null"], "format": "date-time" },
+
+    "manifest": {
+      "type": "object",
+      "description": "Copy of <container>/manifest.json as written at run start.",
+      "required": ["schema_version", "tool", "tool_version", "container_id", "created_utc", "operator", "host", "platform", "public_key"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "description": "Container layout version, independent of the report schema version." },
+        "tool": { "type": "string", "const": "arachnid-core" },
+        "tool_version": { "type": "string" },
+        "container_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+        "created_utc": { "$ref": "#/$defs/timestamp" },
+        "operator": { "type": "string", "description": "Operator identity as supplied at collection. Self-asserted; it is attributable only through the signing key." },
+        "host": { "type": "string", "description": "Hostname of the examined system, as that system reported it." },
+        "platform": { "type": "string", "description": "os/arch, e.g. \"linux/x86_64\"." },
+        "public_key": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Ed25519 verifying key for this container's custody log. Trust it only against a fingerprint recorded out-of-band." }
+      }
+    },
+
+    "collection": {
+      "type": "object",
+      "description": "Volatile state from a `collect` run.",
+      "required": ["processes", "connections", "sessions", "kernel_modules", "persistence", "warnings"],
+      "additionalProperties": false,
+      "properties": {
+        "processes": { "type": "array", "items": { "$ref": "#/$defs/process" } },
+        "connections": { "type": "array", "items": { "$ref": "#/$defs/connection" } },
+        "sessions": { "type": "array", "items": { "$ref": "#/$defs/session" } },
+        "kernel_modules": { "type": "array", "items": { "$ref": "#/$defs/kernelModule" } },
+        "persistence": { "type": "array", "items": { "$ref": "#/$defs/persistenceItem" } },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Collectors that did not complete. A non-empty array means the corresponding arrays are incomplete: an empty list there is not evidence of absence on the host. The process exits 4 when this is non-empty."
+        }
+      }
+    },
+
+    "process": {
+      "type": "object",
+      "required": ["pid", "name", "cmdline", "loaded_modules"],
+      "additionalProperties": false,
+      "properties": {
+        "pid": { "type": "integer", "minimum": 0 },
+        "parent_pid": { "type": ["integer", "null"], "minimum": 0 },
+        "name": { "type": "string" },
+        "cmdline": { "type": "array", "items": { "type": "string" }, "description": "argv as the kernel reports it. May be empty for kernel threads, and is attacker-controlled for any process." },
+        "exe": { "type": ["string", "null"], "description": "Resolved on-disk image path." },
+        "exe_sha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }], "description": "Null when the path did not resolve, was unreadable, exceeded 512 MiB, or --no-hash-binaries was used. A null here against a non-null exe is worth an analyst's attention." },
+        "user": { "type": ["string", "null"] },
+        "start_time": { "type": ["integer", "null"], "description": "Seconds since the Unix epoch." },
+        "cwd": { "type": ["string", "null"] },
+        "loaded_modules": { "type": "array", "items": { "type": "string" }, "description": "Distinct file-backed executable mappings. Empty when the process could not be opened." }
+      }
+    },
+
+    "connection": {
+      "type": "object",
+      "required": ["protocol", "local_addr", "local_port", "state", "pids"],
+      "additionalProperties": false,
+      "properties": {
+        "protocol": { "enum": ["tcp", "tcp6", "udp", "udp6"] },
+        "local_addr": { "type": "string" },
+        "local_port": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "remote_addr": { "type": ["string", "null"] },
+        "remote_port": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 },
+        "state": { "type": "string", "description": "TCP state name, or STATELESS for UDP." },
+        "pids": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "process_name": { "type": ["string", "null"] }
+      }
+    },
+
+    "session": {
+      "type": "object",
+      "required": ["user"],
+      "additionalProperties": false,
+      "properties": {
+        "user": { "type": "string" },
+        "terminal": { "type": ["string", "null"] },
+        "remote_host": { "type": ["string", "null"], "description": "Origin of a remote login, where the platform records one." },
+        "login_time": { "$ref": "#/$defs/nullableTimestamp" },
+        "session_id": { "type": ["string", "null"] },
+        "state": { "type": ["string", "null"] }
+      }
+    },
+
+    "kernelModule": {
+      "type": "object",
+      "required": ["name", "used_by"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "size": { "type": ["integer", "null"] },
+        "path": { "type": ["string", "null"], "description": "On-disk image. Null means the module was not found at its expected location, which is itself a finding." },
+        "sha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "used_by": { "type": "array", "items": { "type": "string" }, "description": "Linux: dependent modules. Always empty on Windows." }
+      }
+    },
+
+    "persistenceItem": {
+      "type": "object",
+      "description": "An enumerated persistence location. Recorded only; Arachnid never modifies these.",
+      "required": ["kind", "location", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["registry_run", "scheduled_task", "startup_folder", "systemd", "cron", "autostart", "rc_local", "launch_agent"] },
+        "location": { "type": "string", "description": "Registry key, directory, or file the entry lives in." },
+        "name": { "type": "string" },
+        "value": { "type": ["string", "null"], "description": "Command or target the entry executes, where one is parseable." },
+        "sha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] }
+      }
+    },
+
+    "memoryAcquisition": {
+      "type": "object",
+      "description": "Record of an external acquisition tool invocation. Arachnid ships no memory driver of its own.",
+      "required": ["tool", "tool_sha256", "args", "output_artifact", "started_utc", "finished_utc", "stderr_tail"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "type": "string" },
+        "tool_sha256": { "$ref": "#/$defs/sha256", "description": "Verified against the operator-supplied expected hash BEFORE execution." },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "output_artifact": { "type": "string" },
+        "started_utc": { "$ref": "#/$defs/timestamp" },
+        "finished_utc": { "$ref": "#/$defs/timestamp" },
+        "exit_code": { "type": ["integer", "null"] },
+        "stderr_tail": { "type": "string", "description": "Last 20 lines of the tool's stderr." }
+      }
+    },
+
+    "captureStats": {
+      "type": "object",
+      "required": ["device", "promiscuous", "snaplen", "datalink", "started_utc", "finished_utc", "packets_written", "bytes_written", "packets_dropped_kernel", "packets_dropped_interface", "stop_reason"],
+      "additionalProperties": false,
+      "properties": {
+        "device": { "type": "string" },
+        "filter": { "type": ["string", "null"], "description": "BPF filter applied in the kernel." },
+        "promiscuous": { "type": "boolean" },
+        "snaplen": { "type": "integer" },
+        "datalink": { "type": "string" },
+        "started_utc": { "$ref": "#/$defs/timestamp" },
+        "finished_utc": { "$ref": "#/$defs/timestamp" },
+        "packets_written": { "type": "integer", "minimum": 0 },
+        "bytes_written": { "type": "integer", "minimum": 0 },
+        "packets_dropped_kernel": { "type": "integer", "minimum": 0, "description": "Non-zero means the capture has gaps. Treat the PCAP as incomplete evidence." },
+        "packets_dropped_interface": { "type": "integer", "minimum": 0 },
+        "stop_reason": { "type": "string" }
+      }
+    },
+
+    "pcapAnalysis": {
+      "type": "object",
+      "required": ["schema_version", "source", "datalink", "packets", "bytes", "decode_errors", "flows", "indicators"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string" },
+        "source": { "type": "string" },
+        "source_sha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }], "description": "Digest of the input savefile, binding this analysis to the exact bytes analysed." },
+        "datalink": { "type": "string" },
+        "packets": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "decode_errors": { "type": "integer", "minimum": 0, "description": "Frames that could not be parsed: malformed, snaplen-truncated, or an undecoded link type." },
+        "first_packet_utc": { "$ref": "#/$defs/nullableTimestamp" },
+        "last_packet_utc": { "$ref": "#/$defs/nullableTimestamp" },
+        "flows": { "type": "array", "items": { "$ref": "#/$defs/flow" } },
+        "indicators": { "type": "array", "items": { "$ref": "#/$defs/indicator" } }
+      }
+    },
+
+    "flow": {
+      "type": "object",
+      "required": ["protocol", "src_addr", "src_port", "dst_addr", "dst_port", "packets", "bytes", "first_seen_utc", "last_seen_utc", "reassembled_bytes", "truncated"],
+      "additionalProperties": false,
+      "properties": {
+        "protocol": { "enum": ["tcp", "udp"] },
+        "src_addr": { "type": "string" },
+        "src_port": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "dst_addr": { "type": "string" },
+        "dst_port": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "packets": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "first_seen_utc": { "$ref": "#/$defs/timestamp" },
+        "last_seen_utc": { "$ref": "#/$defs/timestamp" },
+        "reassembled_bytes": { "type": "integer", "minimum": 0, "description": "Payload recovered by TCP reassembly. Always 0 for UDP." },
+        "truncated": { "type": "boolean", "description": "True if the per-flow reassembly ceiling was hit; indicators from this flow may be incomplete." }
+      }
+    },
+
+    "indicator": {
+      "type": "object",
+      "description": "An observable extracted from captured bytes. Nothing here is resolved or enriched against any remote service.",
+      "required": ["kind", "value", "count", "first_seen_utc", "last_seen_utc"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["ipv4", "ipv6", "dns_query", "dns_answer", "tls_sni", "http_host", "http_uri", "http_user_agent"] },
+        "value": { "type": "string" },
+        "count": { "type": "integer", "minimum": 1 },
+        "first_seen_utc": { "$ref": "#/$defs/timestamp" },
+        "last_seen_utc": { "$ref": "#/$defs/timestamp" },
+        "context": { "type": ["string", "null"], "description": "Flow the indicator was observed in." }
+      }
+    }
+  }
+}
