@@ -1,0 +1,9 @@
+# cargo-deny configuration.
+#
+# Run in CI on every commit:
+#   cargo deny check
+#
+# The dependency tree is deliberately small. A tool that runs with high privilege
+# on a host that may already be compromised should be auditable end to end, and
+# every crate below is on the list because something in the spec needs it.
+
