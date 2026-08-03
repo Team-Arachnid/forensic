@@ -16,3 +16,28 @@ targets = [
 ]
 all-features = true
 
+[advisories]
+# Any *vulnerability* advisory fails the build, at any severity. An incident
+# response binary does not get to ship with a known-vulnerable dependency
+# because the CVSS score looked survivable.
+#
+# `unmaintained` is a different class: it flags maintenance status, not a
+# defect. Those are reviewed individually and either fixed or ignored here with
+# a written reason. An unexplained entry in this list is a review failure.
+version = 2
+yanked = "deny"
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = """
+paste 1.0.15 is archived-but-correct, reached via netstat2 -> netlink-packet-*.
+It is a proc-macro: it runs at compile time and contributes no code to the
+shipped binary, so an unmaintained status carries no runtime risk here. No
+vulnerability is known against it.
+
+Reviewed 2026-08-27. Revisit if netstat2 gains a release that drops the netlink
+crates, or if a vulnerability advisory is ever filed against paste. The
+alternative is hand-rolling /proc/net + GetExtendedTcpTable parsing, which
+removes eight transitive crates (bindgen included) at the cost of replacing
+battle-tested socket enumeration with our own on both platforms.
+""" },
+]
+
