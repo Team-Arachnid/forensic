@@ -63,3 +63,24 @@ name = "ring"
 expression = "MIT AND ISC AND OpenSSL"
 license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Nothing in this tool should be reaching the network on its own account, or
+# loading code at runtime. These are the crates that would enable it.
+deny = [
+    { name = "openssl-sys", reason = "no TLS client belongs in a triage binary" },
+    { name = "reqwest", reason = "Arachnid Core never makes outbound requests" },
+    { name = "hyper", reason = "Arachnid Core never makes outbound requests" },
+    # Banned at runtime. `wrappers` permits the two build-time uses, both of
+    # which run on the build host and contribute no code to the shipped binary:
+    #   clang-sys  - bindgen loads libclang to generate FFI bindings
+    #   pcap       - build.rs probes for wpcap.dll; the runtime binding is a
+    #                plain #[link(name = "wpcap")] import, not a dlopen
+    # If either ever becomes a normal (non-build) dependency, this check fails,
+    # which is the point.
+    { name = "libloading", wrappers = ["clang-sys", "pcap"], reason = "no dynamic code loading in the shipped binary; see the non-goals in README" },
+    { name = "dlopen", reason = "no dynamic code loading; see the non-goals in README" },
+]
+skip-tree = []
+
