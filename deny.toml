@@ -84,3 +84,9 @@ deny = [
 ]
 skip-tree = []
 
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# No git dependencies: every input is a versioned, checksummed crates.io release.
+allow-git = []
