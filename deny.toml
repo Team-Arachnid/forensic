@@ -41,3 +41,20 @@ battle-tested socket enumeration with our own on both platforms.
 """ },
 ]
 
+[licenses]
+version = 2
+# Permissive licenses only. Copyleft would constrain how SOCs redistribute the
+# binary internally, which works against the allowlisting goal.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.93
+
