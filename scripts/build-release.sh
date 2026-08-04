@@ -73,3 +73,23 @@ VERSION="$(cargo metadata --no-deps --format-version 1 \
 OUT="$DIST/arachnid-core-$VERSION-$TARGET"
 cp "$BIN" "$OUT"
 
+# --- 3. prove it is actually static -------------------------------------------
+echo "==> verifying static linkage"
+if ldd "$OUT" 2>&1 | grep -qv "not a dynamic executable"; then
+    echo "FAIL: binary has dynamic dependencies:" >&2
+    ldd "$OUT" >&2
+    exit 1
+fi
+echo "    static: confirmed"
+
+# The tool must be inspectable. No packing, no obfuscation: if `strings` cannot
+# find our own subcommand names, something in the pipeline is hiding the binary
+# from the analysts we are asking to allowlist it.
+# Rust packs string literals into one unterminated blob, so these are substring
+# matches, not whole-line ones.
+echo "==> verifying the binary is inspectable"
+for marker in collect capture parse-pcap verify report "Arachnid Core"; do
+    strings "$OUT" | grep -qF "$marker" || { echo "FAIL: '$marker' not visible to strings" >&2; exit 1; }
+done
+echo "    inspectable: confirmed"
+
