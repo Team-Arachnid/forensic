@@ -50,3 +50,26 @@ if [ ! -f "$PCAP_PREFIX/lib/libpcap.a" ]; then
     cd - >/dev/null
 fi
 
+# --- 2. the binary ------------------------------------------------------------
+echo "==> building arachnid-core for $TARGET"
+rustup target add "$TARGET" >/dev/null 2>&1 || true
+
+# SOURCE_DATE_EPOCH and a remapped path prefix make the build reproducible:
+# two builds of the same commit produce byte-identical binaries, which is what
+# lets a SOC confirm the hash they allowlisted matches the source they reviewed.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --pretty=%ct)}"
+export LIBPCAP_LIBDIR="$PCAP_PREFIX/lib"
+export LIBPCAP_VER="$PCAP_VERSION"
+export RUSTFLAGS="-C target-feature=+crt-static \
+  -L native=$PCAP_PREFIX/lib \
+  --remap-path-prefix=$PWD=/build \
+  --remap-path-prefix=$HOME/.cargo=/cargo"
+
+cargo build --release --locked --target "$TARGET" -p arachnid-core-cli
+
+BIN="target/$TARGET/release/arachnid-core"
+VERSION="$(cargo metadata --no-deps --format-version 1 \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
+OUT="$DIST/arachnid-core-$VERSION-$TARGET"
+cp "$BIN" "$OUT"
+
