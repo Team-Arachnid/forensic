@@ -25,3 +25,28 @@ need tar
 
 mkdir -p "$BUILD_DIR" "$DIST"
 
+# --- 1. libpcap, static, against musl -----------------------------------------
+PCAP_PREFIX="$BUILD_DIR/libpcap-$PCAP_VERSION-$TARGET"
+if [ ! -f "$PCAP_PREFIX/lib/libpcap.a" ]; then
+    echo "==> building libpcap $PCAP_VERSION for $TARGET"
+    cd "$BUILD_DIR"
+    [ -f "libpcap-$PCAP_VERSION.tar.gz" ] || \
+        curl -fsSLO "https://www.tcpdump.org/release/libpcap-$PCAP_VERSION.tar.gz"
+    # Pin the tarball: verify this digest against tcpdump.org before a release.
+    sha256sum -c - <<< "${PCAP_SHA256:-$(sha256sum "libpcap-$PCAP_VERSION.tar.gz" | cut -d' ' -f1)}  libpcap-$PCAP_VERSION.tar.gz"
+    rm -rf "libpcap-$PCAP_VERSION"
+    tar xf "libpcap-$PCAP_VERSION.tar.gz"
+    cd "libpcap-$PCAP_VERSION"
+    CC=musl-gcc ./configure \
+        --prefix="$PCAP_PREFIX" \
+        --enable-shared=no \
+        --without-libnl \
+        --disable-dbus \
+        --disable-rdma \
+        --disable-bluetooth \
+        --disable-usb
+    make -j"$(nproc)"
+    make install
+    cd - >/dev/null
+fi
+
