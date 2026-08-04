@@ -93,3 +93,22 @@ for marker in collect capture parse-pcap verify report "Arachnid Core"; do
 done
 echo "    inspectable: confirmed"
 
+# --- 4. checksums and signature -----------------------------------------------
+cd "$DIST"
+sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256"
+echo "==> SHA-256: $(cat "$(basename "$OUT").sha256")"
+
+if [ -n "$GPG_KEY" ]; then
+    gpg --detach-sign --armor --local-user "$GPG_KEY" \
+        --output "$(basename "$OUT").asc" "$(basename "$OUT")"
+    gpg --verify "$(basename "$OUT").asc" "$(basename "$OUT")"
+    echo "==> signed with $GPG_KEY"
+else
+    echo "==> GPG_KEY not set; skipping detached signature (release builds MUST set it)"
+fi
+
+echo
+echo "Artifacts in $DIST:"
+ls -la "$DIST"
+echo
+echo "Add the SHA-256 above to docs/SOC-ALLOWLISTING.md before publishing."
