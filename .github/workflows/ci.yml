@@ -44,3 +44,15 @@ jobs:
 
   # Typecheck the Windows collectors from Linux too, so a change to the
   # cfg(windows) modules cannot merge on the strength of a Linux build alone.
+  cross-check:
+    name: cross typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
+
