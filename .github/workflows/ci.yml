@@ -56,3 +56,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
 
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  # Supply chain. An accidental dependency that could phone home, load code
+  # dynamically, or carry a known vulnerability fails the build here rather
+  # than shipping to a responder's endpoint.
