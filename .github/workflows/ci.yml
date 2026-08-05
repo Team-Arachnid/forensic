@@ -68,3 +68,15 @@ jobs:
   # Supply chain. An accidental dependency that could phone home, load code
   # dynamically, or carry a known vulnerability fails the build here rather
   # than shipping to a responder's endpoint.
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
