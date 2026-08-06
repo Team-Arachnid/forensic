@@ -90,3 +90,62 @@ tool is worth an alert.
 
 ---
 
+## 4. Filesystem behaviour
+
+### Writes
+
+**Only inside the evidence container directory given by `-o/--output`**, plus
+the operational log path if you pass `--log`. There are no temp files, no
+scratch directories, no config files, and no writes to any system location.
+
+```
+<container>/manifest.json
+<container>/custody.log
+<container>/artifacts/*
+```
+
+`--dry-run` performs every collection and every hash but writes nothing at all,
+including not creating the container directory. Use it to validate a rule.
+
+### Reads
+
+Linux:
+
+```
+/proc/<pid>/{stat,cmdline,exe,cwd,maps,status}   process state
+/proc/net/{tcp,tcp6,udp,udp6}, /proc/<pid>/fd/   sockets to owning PID
+/proc/modules, /proc/sys/kernel/osrelease        loaded kernel modules
+/lib/modules/<release>/**                        module images, for hashing
+/var/run/utmp, /run/utmp                         login sessions
+/etc/systemd/system, /run/systemd/system,
+  /usr/lib/systemd/system, /lib/systemd/system,
+  /etc/systemd/user, /usr/lib/systemd/user       unit files
+/etc/crontab, /etc/cron.d, /etc/cron.{hourly,
+  daily,weekly,monthly}, /var/spool/cron[/crontabs]
+/etc/xdg/autostart, /home/*/.config/autostart,
+  /root/.config/autostart                        desktop autostart
+/etc/rc.local, /etc/rc.d/rc.local
+<any process exe path>                           binary hashing (--no-hash-binaries disables)
+```
+
+Windows:
+
+```
+HKLM\ and HKCU\ Software\Microsoft\Windows\CurrentVersion\Run
+  ...\RunOnce, ...\RunServices, ...\RunServicesOnce
+  ...\Policies\Explorer\Run
+HKLM\...\Windows NT\CurrentVersion\Winlogon
+HKLM\Software\Wow6432Node\...\Run
+%SystemRoot%\System32\Tasks\**                   scheduled task XML
+%ProgramData%\Microsoft\Windows\Start Menu\Programs\StartUp\*
+%SystemDrive%\Users\*\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\*
+%SystemRoot%\System32\drivers\*.sys              driver images, for hashing
+<any process image path>                         binary hashing
+```
+
+**All registry access is `KEY_READ`.** No key or value is created, modified, or
+deleted. No scheduled task is registered or removed. No unit is enabled or
+disabled. Arachnid enumerates persistence; it never touches it.
+
+---
+
