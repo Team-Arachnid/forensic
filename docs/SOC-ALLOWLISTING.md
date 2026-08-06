@@ -74,3 +74,19 @@ and gets flagged rather than implemented.
 
 ---
 
+## 3. Process behaviour
+
+| Behaviour | Detail |
+|---|---|
+| Child processes | **None**, except the memory acquisition tool *you* specify via `--memory-tool`. Arachnid verifies that tool's SHA-256 against a hash you supply and refuses to execute it on mismatch. |
+| Process access | `OpenProcess` with `PROCESS_QUERY_LIMITED_INFORMATION \| PROCESS_VM_READ` for module enumeration (Windows). Read-only. Failures are tolerated, not retried with escalated rights. |
+| Memory writes | None into any other process, ever. |
+| Threads | Single-threaded collection. No remote thread creation. |
+| Privilege | Uses the token it is launched with. Never adjusts, impersonates, or escalates. Capture needs root/`CAP_NET_RAW` (Linux) or Npcap driver access (Windows); everything else degrades gracefully without it. |
+
+Expected parent process is a shell, an EDR live-response session, or a SOAR
+runner. `arachnid-core` spawning anything other than your named acquisition
+tool is worth an alert.
+
+---
+
