@@ -80,3 +80,17 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+  schema:
+    name: schemas match output
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: pip install jsonschema
+      - name: Validate a real container against the published schemas
+        run: |
+          cargo run --release -p arachnid-core-cli -- \
+            --log-level warn collect -o ./ci-container --no-hash-binaries
+          python3 scripts/validate-schemas.py ./ci-container
