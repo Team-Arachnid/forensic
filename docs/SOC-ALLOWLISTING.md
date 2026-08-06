@@ -44,3 +44,33 @@ available and we encourage it.
 
 ---
 
+## 2. What it is not
+
+These are hard design constraints, enforced in review and in `deny.toml`.
+Arachnid Core contains **no**:
+
+- anti-EDR, anti-AV, anti-debugging, or sandbox-detection logic
+- packing, binary encryption, or runtime obfuscation
+- dynamic code loading, self-modification, or reflective loading. `libloading`
+  and `dlopen` are denied at the dependency level; the two build scripts that
+  use `libloading` (bindgen's libclang probe, and pcap's `wpcap.dll` probe) run
+  on the build host only and are explicitly whitelisted as build-time in
+  `deny.toml`. On Windows, `wpcap.dll` is a normal import-library link, not a
+  runtime `LoadLibrary` of attacker-reachable code
+- process injection, hooking, or memory writes into other processes
+- exploit or privilege-escalation code — it uses the privilege it was given
+- persistence for itself: it installs no service, task, key, or unit
+- outbound network connections of any kind (`reqwest` and `hyper` are denied
+  at the dependency level; there is no update check and no telemetry)
+- packet injection or interception — capture is receive-only
+
+The binary is deliberately inspectable: `strings`, `sigcheck`, and a
+disassembler all work on it, and the release script **fails the build** if the
+subcommand names are not visible to `strings`. If your analysts want to read it
+before approving it, that is the intended workflow.
+
+If a future feature would require any of the above, the design is out of scope
+and gets flagged rather than implemented.
+
+---
+
