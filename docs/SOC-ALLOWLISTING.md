@@ -187,3 +187,25 @@ Expect `ptrace`-free process enumeration; Arachnid does not attach to processes.
 
 ---
 
+## 7. Verifying a container you receive
+
+Anyone can re-check an evidence container without trusting the collecting host:
+
+```bash
+arachnid-core verify /path/to/container      # exit 0 = intact, 3 = tampered
+arachnid-core --json verify /path/to/container
+```
+
+This re-hashes every artifact, re-checks every Ed25519 signature, and walks the
+custody hash chain. It runs independently of the collection code path.
+
+**Important limitation, stated plainly:** without `--signing-key`, Arachnid
+generates a signing key per run. That makes the container tamper-*evident*
+against modification after collection, but anyone who can rewrite the whole
+container can also swap the key and re-sign it. `verify` therefore proves
+*integrity*, not *origin*, unless the key fingerprint it prints matches one you
+recorded out-of-band at collection time. For chain-of-custody that must survive
+challenge, issue each responder a persistent key and pass `--signing-key`.
+
+---
+
