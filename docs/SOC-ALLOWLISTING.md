@@ -149,3 +149,21 @@ disabled. Arachnid enumerates persistence; it never touches it.
 
 ---
 
+## 5. Network behaviour
+
+| Behaviour | Detail |
+|---|---|
+| Outbound connections | **None.** No telemetry, no update check, no indicator lookup, no DNS resolution of collected indicators. |
+| Listening sockets | None. |
+| Packet capture | Only under `capture`, only on the interface you name with `--device`. Uses libpcap (Linux) / Npcap (Windows). |
+| Promiscuous mode | **Off by default.** `--promiscuous` is opt-in because it changes interface receive mode, which is an observable host change. |
+| Transmission | None. The send path of the capture library is never called. |
+| BPF filters | Applied in the kernel, so filtered traffic is never copied into userspace. |
+
+Expected EDR observations during `capture`: `AF_PACKET` socket creation and
+`SO_ATTACH_FILTER` (Linux), or a handle to `\Device\NPCAP\<iface>` (Windows).
+Both are inherent to packet capture and are the reason capture is a separate
+subcommand you can decline to allow.
+
+---
+
