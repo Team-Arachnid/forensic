@@ -209,3 +209,8 @@ challenge, issue each responder a persistent key and pass `--signing-key`.
 
 ---
 
+## 8. Reporting
+
+If Arachnid Core does something not described here, that is a defect we want to
+know about. Open an issue with the operational log (`--log`) and the custody
+log; between them they record every action the tool took.
