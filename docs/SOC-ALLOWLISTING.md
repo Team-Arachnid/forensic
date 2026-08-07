@@ -167,3 +167,23 @@ subcommand you can decline to allow.
 
 ---
 
+## 6. Suggested rules
+
+**Windows Defender ASR / AppLocker / WDAC** — prefer a publisher rule on the
+Authenticode certificate. If you must use a path rule, scope it to a
+SOC-controlled directory that responders cannot write to arbitrarily.
+
+**CrowdStrike / SentinelOne / Defender for Endpoint** — allowlist by
+certificate, then add an exclusion for the evidence container path so the
+collected artifacts (which will contain malware paths and, if you acquire
+memory, malware *code*) are not quarantined mid-collection.
+
+> Put the evidence container on a dedicated collection volume or share, and
+> exclude that path from real-time scanning. A memory image of an infected host
+> **will** trigger signature hits. That is the image working correctly.
+
+**Linux (SELinux/AppArmor/auditd)** — the read set in §4 is the complete list.
+Expect `ptrace`-free process enumeration; Arachnid does not attach to processes.
+
+---
+
