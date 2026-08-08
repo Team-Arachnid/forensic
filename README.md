@@ -195,3 +195,38 @@ takes precedence over the `ARACHNID_LOG` environment variable.
 
 ---
 
+## The evidence container
+
+```
+ev-host01/
+├── manifest.json          run metadata + Ed25519 public key
+├── custody.log            append-only signed hash chain, one record per line
+└── artifacts/
+    ├── processes.json     connections.json     sessions.json
+    ├── kernel_modules.json    persistence.json
+    ├── memory.raw         (if acquired)
+    ├── capture.pcap       (capture runs)
+    ├── pcap_analysis.json (parse-pcap runs)
+    └── report.json  report.md  report.html
+```
+
+Each `custody.log` line is `<ed25519-signature-hex> <record-json>`. Three
+properties combine to make the container tamper-evident:
+
+| Tampering | Detected by |
+|---|---|
+| Editing an artifact | recorded SHA-256 no longer matches |
+| Editing a log record | that line's signature no longer verifies |
+| Deleting or reordering records | `prev` hash chain breaks |
+| Adding an unlogged artifact | file present on disk with no custody record |
+
+Signing is over the exact bytes following the first space on the line. Nothing
+is re-serialized during verification, so JSON canonicalization is never a
+correctness question.
+
+Every record carries both a UTC wall-clock timestamp and a monotonic offset from
+container creation. Wall clock is what an analyst reads; the monotonic clock is
+what preserves ordering when the examined host's clock steps mid-collection.
+
+---
+
