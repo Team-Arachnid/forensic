@@ -107,3 +107,91 @@ confirms the binary it allowlisted matches the source it reviewed.
 
 ---
 
+## Usage
+
+### `collect` — volatile system state
+
+```bash
+arachnid-core collect -o ./ev-host01 \
+    --operator "analyst-7" \
+    --signing-key ~/.arachnid/analyst-7.key
+```
+
+Collects processes (with argv, parent PID, loaded modules, and SHA-256 of the
+on-disk image), network connections mapped to owning processes, login sessions,
+loaded kernel modules, and persistence locations.
+
+Optional memory acquisition wraps an external, vetted tool rather than shipping
+a kernel driver of its own:
+
+```bash
+arachnid-core collect -o ./ev-host01 \
+    --memory-tool /opt/avml --memory-tool-sha256 <hex>
+```
+
+The tool's hash is verified **before** execution. A mismatch aborts the run —
+on a host that may be compromised, an unverified acquisition binary does not get
+to run just because it had the right filename.
+
+### `capture` — live packet capture
+
+```bash
+arachnid-core capture --list-devices
+arachnid-core capture -o ./ev-net -d eth0 -f "tcp port 443" --duration 300
+```
+
+BPF filters are applied in the kernel, so filtered traffic is never copied into
+userspace. Promiscuous mode is **off by default** because enabling it changes
+the interface's receive mode, which is an observable change to the host. Ctrl-C
+stops cleanly: the savefile is flushed and hashed rather than lost.
+
+Kernel/interface packet drops are recorded and surfaced prominently. A capture
+with drops has gaps, and gaps in evidence must be visible.
+
+### `parse-pcap` — offline analysis
+
+```bash
+arachnid-core parse-pcap capture.pcap -o ./ev-pcap -f "not port 53"
+```
+
+Builds a flow table, reassembles TCP streams, and extracts indicators: IPs, DNS
+queries and answers, TLS SNI, HTTP hosts, URIs, and User-Agents. The source
+file's SHA-256 is recorded, binding the analysis to the exact bytes analysed.
+
+Nothing is resolved or enriched against any remote service. A triage tool that
+phones out about the indicators it just found leaks the investigation.
+
+### `verify` — independent integrity check
+
+```bash
+arachnid-core verify ./ev-host01        # exit 0 intact, 3 tampered
+arachnid-core --json verify ./ev-host01
+```
+
+Re-hashes every artifact, re-checks every signature, and walks the custody hash
+chain. Deliberately implemented independently of the collection path, so a bug
+in collection cannot make a broken container verify clean.
+
+### Exit codes
+
+Stable across releases, for SOAR playbooks and IR scripts:
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Runtime error — I/O, permission, missing device, unusable input |
+| 2 | Usage error (clap) |
+| 3 | Integrity failure — `verify` found a problem |
+| 4 | Completed, but a collector was degraded; see `warnings` in the report |
+
+Code 4 is the one worth special handling: you *have* evidence, but it is
+incomplete, and the report says exactly which collectors fell short.
+
+### Logging
+
+The operational log (`tracing`) is strictly separate from the evidence log. It
+goes to stderr, or to `--log <path>`. Verbosity comes from `--log-level`, which
+takes precedence over the `ARACHNID_LOG` environment variable.
+
+---
+
