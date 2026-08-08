@@ -33,3 +33,28 @@ arachnid-core report      ./ev-host01 --format html -o triage.html
 
 ---
 
+## Design stance
+
+A triage tool runs with high privilege on a host that may already be
+compromised, and it does things that resemble reconnaissance. Two consequences
+shape everything here.
+
+**1. Be inspectable, not evasive.** There is no packing, no obfuscation, no
+anti-debugging, and no attempt to hide from AV or EDR. The release build
+*fails* if the subcommand names are not visible to `strings`. Defenders are
+asked to pre-approve the tool via [the allowlisting
+guide](docs/SOC-ALLOWLISTING.md) — the alternative, a tool that hides from
+defenders, is indistinguishable from malware and deserves to be treated as such.
+
+**2. Never write to the target.** Collectors read `/proc`, `/sys`, the registry
+(`KEY_READ` only), and config paths. Persistence entries are *enumerated*, never
+modified. `--dry-run` performs every collection and every hash while writing
+nothing at all, so you can validate an EDR rule before a real engagement.
+
+Explicitly out of scope, and flagged rather than implemented if a future feature
+would need them: anti-EDR/anti-AV/anti-debugging, packing or runtime
+obfuscation, exploit or privilege-escalation code, process injection, dynamic
+code loading, self-persistence, packet injection or interception.
+
+---
+
