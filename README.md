@@ -19,3 +19,17 @@ arachnid-core report      ./ev-host01 --format html -o triage.html
 
 ---
 
+## Contents
+
+- [Design stance](#design-stance)
+- [Install and build](#install-and-build)
+- [Usage](#usage)
+- [The evidence container](#the-evidence-container)
+- [Threat model](#threat-model)
+- [SOC allowlisting](#soc-allowlisting)
+- [Output schema](#output-schema)
+- [Development](#development)
+- [Known limitations](#known-limitations)
+
+---
+
