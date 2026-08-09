@@ -230,3 +230,63 @@ what preserves ordering when the examined host's clock steps mid-collection.
 
 ---
 
+## Threat model
+
+### What Arachnid Core defends against
+
+**Post-collection tampering.** Anyone who modifies an artifact, edits a custody
+record, removes a record, or plants an unlogged file is detected by `verify`.
+This is the property the container exists to provide.
+
+**A swapped acquisition tool.** The memory acquisition binary is hash-pinned and
+verified before execution, so a replaced `avml` on a compromised host is caught
+before it runs rather than recorded after.
+
+**Silent partial collection.** Every collector that fails records why, in
+`warnings`, in the custody log, at the top of the report, and in exit code 4. An
+empty result set is never allowed to look like a clean host.
+
+**Capture gaps.** Kernel and interface drop counters are recorded and surfaced.
+
+### What it does *not* defend against
+
+These are limitations of live triage itself, not gaps to be patched. State them
+in your notes.
+
+**A compromised kernel lies.** Every collector reads through OS APIs. A rootkit
+that hooks those APIs — a malicious LKM, an SSDT hook, a hypervisor-level
+implant — can hide processes, sockets, and files from us as easily as from
+`ps`. Memory acquisition and offline analysis are the countermeasure, which is
+why `collect` supports acquiring an image. Correlate; do not trust live
+enumeration alone against a kernel-level adversary.
+
+**Ephemeral-key containers prove integrity, not origin.** Without
+`--signing-key`, a key is generated per run. Anyone who can rewrite the whole
+container can also swap the key and re-sign everything. `verify` then proves
+only that the container is self-consistent. It proves *origin* only when the key
+fingerprint matches one recorded out-of-band. **For chain of custody that must
+survive challenge in a proceeding, issue each responder a persistent key and
+always pass `--signing-key`.** The fingerprint is printed at the end of every
+run precisely so it can be recorded.
+
+**Collection is not atomic.** The host keeps running while collectors execute. A
+process can exit between the process table read and the connection table read.
+Timestamps in the custody log let you reconstruct the order; they cannot give
+you a consistent snapshot. Only a memory image can.
+
+**The operator's privilege is the ceiling.** Arachnid never escalates. Running
+as a normal user yields materially less evidence, and says so.
+
+**Collected content is hostile input.** Process command lines, DNS names, HTTP
+headers, and persistence values are all attacker-controllable. They are stored
+verbatim, and escaped on output — the HTML report escapes every field, and there
+is a test asserting a `<script>` tag in a hostname cannot break out. Anything
+downstream that renders this data must escape it too.
+
+**Anti-forensics that predates collection.** A cleared utmp, a deleted unit
+file, or a task registered only in the registry store is already gone before
+Arachnid runs. Arachnid records what is present; it does not recover what was
+removed. That is the Arachnid Recover module's job.
+
+---
+
