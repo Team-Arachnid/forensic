@@ -290,3 +290,15 @@ removed. That is the Arachnid Recover module's job.
 
 ---
 
+## SOC allowlisting
+
+Full disclosure of every path, registry key, API, and network behaviour is in
+**[docs/SOC-ALLOWLISTING.md](docs/SOC-ALLOWLISTING.md)** — written so a SOC can
+pre-approve the binary with a narrow rule instead of a broad one.
+
+Summary: no child processes except the acquisition tool you name; no writes
+outside your `-o` directory; no outbound network connections of any kind; no
+listening sockets; read-only registry access; no self-persistence.
+
+---
+
