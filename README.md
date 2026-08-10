@@ -352,3 +352,23 @@ phone home fails the build rather than shipping.
 
 ---
 
+## Known limitations
+
+- **macOS** is a stretch goal. `sysinfo` and `netstat2` already yield processes
+  and connections there; sessions, kernel modules, and persistence report an
+  explicit gap rather than an empty list.
+- **Windows scheduled tasks** are read from the on-disk `System32\Tasks` store
+  rather than through the Task Scheduler COM API. This misses a task registered
+  only in the registry `TaskCache` with no matching file — a known
+  anti-forensics technique. Tracked in the source with a `ponytail:` marker.
+- **TCP reassembly** assumes a stream window under 2 GiB, the standard TCP
+  assumption. Per-flow reassembly is capped (8 MiB by default) and a flow that
+  hits the cap is flagged `truncated`, never silently shortened.
+- **Encrypted ClientHello** yields no SNI. Arachnid reads the plaintext
+  handshake and does not attempt to decrypt anything.
+- **`paste`**, reached via `netstat2`, carries an unmaintained advisory
+  (RUSTSEC-2024-0436). It is a compile-time proc-macro contributing no code to
+  the binary; the exception and its review date are documented in `deny.toml`.
+
+---
+
