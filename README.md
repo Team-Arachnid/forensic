@@ -318,3 +318,37 @@ these containers directly.
 
 ---
 
+## Development
+
+```bash
+cargo test --workspace              # unit + integration tests
+cargo clippy --workspace --all-targets
+cargo deny check                    # advisories, bans, licenses, sources
+cargo audit                         # RustSec advisories (same DB as deny)
+
+# Typecheck the Windows collectors from a Linux host — no linker required
+rustup target add x86_64-pc-windows-msvc
+cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
+```
+
+The workspace is five crates, and `arachnid-evidence` is the foundation every
+other one depends on:
+
+| Crate | Responsibility |
+|---|---|
+| `arachnid-evidence` | Hashing, Ed25519 custody chain, container creation, verification |
+| `arachnid-collect` | Read-only volatile collectors; external memory acquisition |
+| `arachnid-netcap` | Live capture, PCAP parsing, TCP reassembly, indicators |
+| `arachnid-report` | Schema-versioned JSON, Markdown and HTML summaries |
+| `arachnid-core-cli` | Argument parsing, orchestration, exit codes |
+
+Tests run unprivileged. Anything needing root — live capture, memory
+acquisition — is exercised on its refusal path in CI and belongs to a
+disposable-VM suite otherwise.
+
+Dependencies are kept few and are audited in CI; `deny.toml` bans outbound-HTTP
+and dynamic-loading crates outright, so an accidental dependency that could
+phone home fails the build rather than shipping.
+
+---
+
