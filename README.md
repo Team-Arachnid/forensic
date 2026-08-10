@@ -302,3 +302,19 @@ listening sockets; read-only registry access; no self-persistence.
 
 ---
 
+## Output schema
+
+The JSON report is the contract, and it is versioned:
+
+- [`schema/report.schema.json`](schema/report.schema.json) — the full report
+- [`schema/custody.schema.json`](schema/custody.schema.json) — one custody record
+
+Consumers must reject a major version they do not implement. The Markdown and
+HTML renderings carry no information the JSON lacks, and can be regenerated at
+any time with `arachnid-core report`.
+
+The container format is shared with the Arachnid Recover module, which consumes
+these containers directly.
+
+---
+
