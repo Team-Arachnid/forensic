@@ -372,3 +372,6 @@ phone home fails the build rather than shipping.
 
 ---
 
+## License
+
+MIT. See [LICENSE](LICENSE).
