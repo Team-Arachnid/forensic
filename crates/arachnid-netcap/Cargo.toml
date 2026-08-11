@@ -1,0 +1,17 @@
+[package]
+name = "arachnid-netcap"
+description = "Live packet capture and offline PCAP analysis: TCP reassembly and indicator extraction."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+time.workspace = true
+tracing.workspace = true
+etherparse = "0.21"
+pcap = "2.5"

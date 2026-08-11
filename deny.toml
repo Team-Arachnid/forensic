@@ -1,0 +1,92 @@
+# cargo-deny configuration.
+#
+# Run in CI on every commit:
+#   cargo deny check
+#
+# The dependency tree is deliberately small. A tool that runs with high privilege
+# on a host that may already be compromised should be auditable end to end, and
+# every crate below is on the list because something in the spec needs it.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "x86_64-pc-windows-msvc",
+    "aarch64-unknown-linux-gnu",
+]
+all-features = true
+
+[advisories]
+# Any *vulnerability* advisory fails the build, at any severity. An incident
+# response binary does not get to ship with a known-vulnerable dependency
+# because the CVSS score looked survivable.
+#
+# `unmaintained` is a different class: it flags maintenance status, not a
+# defect. Those are reviewed individually and either fixed or ignored here with
+# a written reason. An unexplained entry in this list is a review failure.
+version = 2
+yanked = "deny"
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = """
+paste 1.0.15 is archived-but-correct, reached via netstat2 -> netlink-packet-*.
+It is a proc-macro: it runs at compile time and contributes no code to the
+shipped binary, so an unmaintained status carries no runtime risk here. No
+vulnerability is known against it.
+
+Reviewed 2026-08-27. Revisit if netstat2 gains a release that drops the netlink
+crates, or if a vulnerability advisory is ever filed against paste. The
+alternative is hand-rolling /proc/net + GetExtendedTcpTable parsing, which
+removes eight transitive crates (bindgen included) at the cost of replacing
+battle-tested socket enumeration with our own on both platforms.
+""" },
+]
+
+[licenses]
+version = 2
+# Permissive licenses only. Copyleft would constrain how SOCs redistribute the
+# binary internally, which works against the allowlisting goal.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.93
+
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Nothing in this tool should be reaching the network on its own account, or
+# loading code at runtime. These are the crates that would enable it.
+deny = [
+    { name = "openssl-sys", reason = "no TLS client belongs in a triage binary" },
+    { name = "reqwest", reason = "Arachnid Core never makes outbound requests" },
+    { name = "hyper", reason = "Arachnid Core never makes outbound requests" },
+    # Banned at runtime. `wrappers` permits the two build-time uses, both of
+    # which run on the build host and contribute no code to the shipped binary:
+    #   clang-sys  - bindgen loads libclang to generate FFI bindings
+    #   pcap       - build.rs probes for wpcap.dll; the runtime binding is a
+    #                plain #[link(name = "wpcap")] import, not a dlopen
+    # If either ever becomes a normal (non-build) dependency, this check fails,
+    # which is the point.
+    { name = "libloading", wrappers = ["clang-sys", "pcap"], reason = "no dynamic code loading in the shipped binary; see the non-goals in README" },
+    { name = "dlopen", reason = "no dynamic code loading; see the non-goals in README" },
+]
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# No git dependencies: every input is a versioned, checksummed crates.io release.
+allow-git = []

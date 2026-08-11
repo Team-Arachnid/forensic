@@ -1,0 +1,28 @@
+[package]
+name = "arachnid-collect"
+description = "Read-only volatile data collectors: processes, network state, sessions, kernel modules, persistence."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+arachnid-evidence.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tracing.workspace = true
+netstat2 = "0.11"
+sysinfo = { version = "0.39", default-features = false, features = ["system", "user"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-registry = "0.6"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Threading",
+] }

@@ -1,0 +1,9 @@
+# cargo-audit configuration. Kept in sync with the [advisories] section of
+# deny.toml, which is the CI gate; this file makes a bare `cargo audit` agree.
+
+[advisories]
+# RUSTSEC-2024-0436: `paste` is archived-but-correct, reached via
+# netstat2 -> netlink-packet-*. It is a compile-time proc-macro and contributes
+# no code to the shipped binary. No vulnerability is known against it.
+# Reviewed 2026-08-27. See deny.toml for the full rationale and revisit criteria.
+ignore = ["RUSTSEC-2024-0436"]

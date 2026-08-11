@@ -1,0 +1,17 @@
+[package]
+name = "arachnid-report"
+description = "Schema-versioned JSON report and human-readable Markdown/HTML summary."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+arachnid-collect.workspace = true
+arachnid-evidence.workspace = true
+arachnid-netcap.workspace = true
+serde.workspace = true
+serde_json.workspace = true

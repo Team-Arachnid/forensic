@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install libpcap (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+
+      # The Npcap SDK provides the wpcap import library. The Npcap driver itself
+      # is not installed: CI never captures, it only builds and runs the
+      # unprivileged tests.
+      - name: Install Npcap SDK (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          curl -fsSLO https://npcap.com/dist/npcap-sdk-1.13.zip
+          Expand-Archive npcap-sdk-1.13.zip -DestinationPath $env:RUNNER_TEMP\npcap-sdk
+          "LIB=$env:RUNNER_TEMP\npcap-sdk\Lib\x64;$env:LIB" >> $env:GITHUB_ENV
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo clippy --workspace --all-targets
+      - run: cargo test --workspace
+
+  # Typecheck the Windows collectors from Linux too, so a change to the
+  # cfg(windows) modules cannot merge on the strength of a Linux build alone.
+  cross-check:
+    name: cross typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  # Supply chain. An accidental dependency that could phone home, load code
+  # dynamically, or carry a known vulnerability fails the build here rather
+  # than shipping to a responder's endpoint.
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  schema:
+    name: schemas match output
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: pip install jsonschema
+      - name: Validate a real container against the published schemas
+        run: |
+          cargo run --release -p arachnid-core-cli -- \
+            --log-level warn collect -o ./ci-container --no-hash-binaries
+          python3 scripts/validate-schemas.py ./ci-container

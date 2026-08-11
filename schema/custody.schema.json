@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arachnid-forensic.org/schema/custody-1.0.0.json",
+  "title": "Arachnid Core custody record",
+  "description": "One line of <container>/custody.log. Each line is `<signature-hex> <record-json>`, where the signature is Ed25519 over the exact bytes following the first space. This schema describes the record JSON only.\n\nThe log is a hash chain: `prev` holds the SHA-256 of the entire previous line, so removing or reordering a record breaks verification. Records are never re-serialized during verification, so byte-level canonicalization is not required of consumers -- but a consumer that rewrites a record cannot re-sign it without the operator's key.",
+  "type": "object",
+  "required": ["seq", "ts_utc", "mono_ns", "operator", "event", "prev"],
+  "additionalProperties": false,
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based position in the log. Must increase by exactly one per line."
+    },
+    "ts_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Wall clock at the moment of the event, RFC 3339 UTC. Subject to clock adjustment on the examined host; use mono_ns for relative ordering."
+    },
+    "mono_ns": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Nanoseconds since container creation, from a monotonic clock. Unaffected by NTP steps or a hostile host changing its wall clock mid-collection."
+    },
+    "operator": {
+      "type": "string",
+      "description": "Operator identity as supplied at collection. Self-asserted; attributable only through the signing key."
+    },
+    "event": {
+      "enum": ["run_start", "artifact", "note", "run_end"],
+      "description": "run_start carries the manifest digest; artifact records one collected file; note records something that produced no artifact; run_end closes the log."
+    },
+    "name": {
+      "type": "string",
+      "description": "Artifact path relative to <container>/artifacts/. Required when event is \"artifact\"."
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Digest of the artifact, computed at the moment of collection. Absent on a dry run, where nothing was written."
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Artifact size in bytes at collection time."
+    },
+    "detail": {
+      "type": "string",
+      "description": "Free text for note records: the invocation, a degraded collector, an external tool that was run."
+    },
+    "prev": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the previous log line's exact bytes, signature included. Sixty-four zeroes for seq 0."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "event": { "const": "artifact" } }, "required": ["event"] },
+      "then": { "required": ["name"] }
+    }
+  ]
+}
