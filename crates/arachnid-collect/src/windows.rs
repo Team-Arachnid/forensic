@@ -12,8 +12,8 @@ use windows::Win32::System::ProcessStatus::{
     LIST_MODULES_ALL,
 };
 use windows::Win32::System::RemoteDesktop::{
-    WTSClientName, WTSConnectState, WTSEnumerateSessionsW, WTSFreeMemory,
-    WTSQuerySessionInformationW, WTSUserName, WTS_CURRENT_SERVER_HANDLE, WTS_SESSION_INFOW,
+    WTSClientName, WTSEnumerateSessionsW, WTSFreeMemory, WTSQuerySessionInformationW, WTSUserName,
+    WTS_CURRENT_SERVER_HANDLE, WTS_SESSION_INFOW,
 };
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
@@ -96,8 +96,7 @@ pub fn sessions() -> Result<Vec<Session>> {
                 state: Some(format!("{:?}", s.State)),
             });
         }
-        let _ = WTSFreeMemory(info as *mut std::ffi::c_void);
-        let _ = WTSConnectState; // documents the state enum used above
+        WTSFreeMemory(info as *mut std::ffi::c_void);
         Ok(out)
     }
 }
@@ -242,11 +241,12 @@ fn run_keys(out: &mut Vec<PersistenceItem>) {
 
 /// Scheduled tasks, read from the on-disk task store under `System32\Tasks`.
 ///
-// ponytail: reads the task XML files directly instead of driving the Task
-// Scheduler COM API. Ceiling: misses a task registered only in the registry
-// store with no matching file (a known anti-forensics trick). Upgrade path:
-// ITaskService::GetFolder enumeration, or cross-check against
-// HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tasks.
+/// Reads the task XML directly rather than driving the Task Scheduler COM API.
+/// Known limitation: this misses a task registered only in the registry store
+/// with no matching file on disk, which is a documented anti-forensics
+/// technique. Closing that gap means `ITaskService::GetFolder` enumeration, or
+/// cross-checking against
+/// `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tasks`.
 fn scheduled_tasks(out: &mut Vec<PersistenceItem>) {
     let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
     let root = PathBuf::from(&sysroot).join(r"System32\Tasks");

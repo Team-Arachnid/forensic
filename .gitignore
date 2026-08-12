@@ -18,7 +18,6 @@
 *.key
 !deny.toml
 
-# Local editor and tool state
-/.claude/
+# Local editor state
 .vscode/
 .idea/
