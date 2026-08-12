@@ -447,6 +447,21 @@ mod tests {
         assert!(c.warnings.iter().all(|w| w.contains(':')));
     }
 
+    /// The progress names a UI renders must be exactly the collectors that run,
+    /// in the order they run. Drift here would show an operator a checklist that
+    /// does not match the collection.
+    #[test]
+    fn progress_reports_every_collector_in_order() {
+        let mut seen = Vec::new();
+        collect_all_with_progress(
+            Options {
+                hash_binaries: false,
+            },
+            &mut |name| seen.push(name.to_string()),
+        );
+        assert_eq!(seen, COLLECTORS);
+    }
+
     #[test]
     fn memory_acquisition_rejects_a_hash_mismatch() {
         let fake = std::env::temp_dir().join(format!("arachnid-fake-tool-{}", std::process::id()));
