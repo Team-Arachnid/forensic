@@ -52,9 +52,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+          components: clippy
       - run: sudo apt-get update && sudo apt-get install -y libpcap-dev
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
+      # clippy, not check: lints that only fire on cfg(windows) code are
+      # invisible to a Linux build, and waiting for the windows-latest job to
+      # find them costs a full CI round trip.
+      - run: cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc
 
   fmt:
     runs-on: ubuntu-latest

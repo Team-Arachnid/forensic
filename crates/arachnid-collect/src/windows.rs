@@ -12,8 +12,8 @@ use windows::Win32::System::ProcessStatus::{
     LIST_MODULES_ALL,
 };
 use windows::Win32::System::RemoteDesktop::{
-    WTSClientName, WTSConnectState, WTSEnumerateSessionsW, WTSFreeMemory,
-    WTSQuerySessionInformationW, WTSUserName, WTS_CURRENT_SERVER_HANDLE, WTS_SESSION_INFOW,
+    WTSClientName, WTSEnumerateSessionsW, WTSFreeMemory, WTSQuerySessionInformationW, WTSUserName,
+    WTS_CURRENT_SERVER_HANDLE, WTS_SESSION_INFOW,
 };
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
@@ -96,8 +96,7 @@ pub fn sessions() -> Result<Vec<Session>> {
                 state: Some(format!("{:?}", s.State)),
             });
         }
-        let _ = WTSFreeMemory(info as *mut std::ffi::c_void);
-        let _ = WTSConnectState; // documents the state enum used above
+        WTSFreeMemory(info as *mut std::ffi::c_void);
         Ok(out)
     }
 }

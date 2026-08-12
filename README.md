@@ -326,9 +326,10 @@ cargo clippy --workspace --all-targets
 cargo deny check                    # advisories, bans, licenses, sources
 cargo audit                         # RustSec advisories (same DB as deny)
 
-# Typecheck the Windows collectors from a Linux host — no linker required
+# Lint the Windows collectors from a Linux host — no linker required.
+# Use clippy, not check: lints on cfg(windows) code are invisible otherwise.
 rustup target add x86_64-pc-windows-msvc
-cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
+cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc
 ```
 
 The workspace is five crates, and `arachnid-evidence` is the foundation every
