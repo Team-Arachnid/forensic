@@ -125,30 +125,57 @@ impl Default for Options {
     }
 }
 
+/// The collectors [`collect_all`] runs, in order.
+///
+/// A front end that shows progress renders this list; the names are the same
+/// ones that prefix a [`Collection::warnings`] entry and that
+/// [`collect_all_with_progress`] reports.
+pub const COLLECTORS: [&str; 5] = [
+    "processes",
+    "connections",
+    "sessions",
+    "kernel_modules",
+    "persistence",
+];
+
 /// Run every collector. Individual failures become warnings, not an aborted run.
 pub fn collect_all(opts: Options) -> Collection {
+    collect_all_with_progress(opts, &mut |_| {})
+}
+
+/// As [`collect_all`], but calls `starting` with each collector's name just
+/// before it runs, so an operator UI can show which one is in flight.
+///
+/// Observation only: the set of collectors, their order and their results are
+/// identical to [`collect_all`].
+pub fn collect_all_with_progress(opts: Options, starting: &mut dyn FnMut(&str)) -> Collection {
     let mut c = Collection::default();
     let warn = |what: &str, e: anyhow::Error| {
         tracing::warn!(collector = what, error = %e, "collector failed");
         format!("{what}: {e:#}")
     };
 
+    starting("processes");
     match collect_processes(opts) {
         Ok(v) => c.processes = v,
         Err(e) => c.warnings.push(warn("processes", e)),
     }
+    starting("connections");
     match collect_connections(&c.processes) {
         Ok(v) => c.connections = v,
         Err(e) => c.warnings.push(warn("connections", e)),
     }
+    starting("sessions");
     match sys::sessions() {
         Ok(v) => c.sessions = v,
         Err(e) => c.warnings.push(warn("sessions", e)),
     }
+    starting("kernel_modules");
     match sys::kernel_modules() {
         Ok(v) => c.kernel_modules = v,
         Err(e) => c.warnings.push(warn("kernel_modules", e)),
     }
+    starting("persistence");
     match sys::persistence() {
         Ok(v) => c.persistence = v,
         Err(e) => c.warnings.push(warn("persistence", e)),
