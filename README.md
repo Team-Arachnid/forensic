@@ -361,7 +361,8 @@ phone home fails the build rather than shipping.
 - **Windows scheduled tasks** are read from the on-disk `System32\Tasks` store
   rather than through the Task Scheduler COM API. This misses a task registered
   only in the registry `TaskCache` with no matching file — a known
-  anti-forensics technique. Tracked in the source with a `ponytail:` marker.
+  anti-forensics technique. The limitation and the way to close it are
+  documented on `scheduled_tasks` in `crates/arachnid-collect/src/windows.rs`.
 - **TCP reassembly** assumes a stream window under 2 GiB, the standard TCP
   assumption. Per-flow reassembly is capped (8 MiB by default) and a flow that
   hits the cap is flagged `truncated`, never silently shortened.
