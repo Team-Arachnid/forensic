@@ -1,12 +1,27 @@
 # Static linking per platform. See README "Build" for what "static" does and does
 # not cover — the packet-capture library is the one honest exception.
 
+# wpcap.dll is delay-loaded rather than bound at load time. The `pcap` crate
+# declares it as a normal import, which means the process cannot even *start*
+# without Npcap installed — so `verify`, `report` and `collect` would all fail
+# with STATUS_DLL_NOT_FOUND on a host that has no packet driver, which is most
+# analyst workstations and plenty of endpoints. Delay-loading defers the
+# resolution to the first pcap call, so only the subcommands that actually
+# capture or parse need Npcap. See netcap::ensure_pcap_available.
 [target.x86_64-pc-windows-msvc]
-# Static CRT: no vcruntime redistributable on the examined host.
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = [
+    # Static CRT: no vcruntime redistributable on the examined host.
+    "-C", "target-feature=+crt-static",
+    "-C", "link-arg=/DELAYLOAD:wpcap.dll",
+    "-C", "link-arg=delayimp.lib",
+]
 
 [target.aarch64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = [
+    "-C", "target-feature=+crt-static",
+    "-C", "link-arg=/DELAYLOAD:wpcap.dll",
+    "-C", "link-arg=delayimp.lib",
+]
 
 [target.x86_64-unknown-linux-musl]
 rustflags = ["-C", "target-feature=+crt-static"]

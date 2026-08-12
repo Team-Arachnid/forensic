@@ -368,6 +368,11 @@ phone home fails the build rather than shipping.
   hits the cap is flagged `truncated`, never silently shortened.
 - **Encrypted ClientHello** yields no SNI. Arachnid reads the plaintext
   handshake and does not attempt to decrypt anything.
+- **Windows without Npcap**: `capture` and `parse-pcap` need `wpcap.dll` and
+  report a readable error when it is absent. `collect`, `verify` and `report`
+  work without it — `wpcap.dll` is delay-loaded, so the binary starts on a host
+  that has no packet driver. Npcap installs to `System32\Npcap`, which is not
+  on the default DLL search path; Arachnid adds it before the first pcap call.
 - **`paste`**, reached via `netstat2`, carries an unmaintained advisory
   (RUSTSEC-2024-0436). It is a compile-time proc-macro contributing no code to
   the binary; the exception and its review date are documented in `deny.toml`.

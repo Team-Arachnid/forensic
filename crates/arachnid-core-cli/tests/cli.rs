@@ -367,11 +367,22 @@ fn the_operational_log_is_separate_from_the_evidence_log() {
 fn list_devices_needs_no_evidence_container() {
     // Regression: --output is required for a real capture but must not be for
     // listing interfaces, which writes nothing.
+    //
+    // Asserts on the *usage* outcome rather than on success: a machine with no
+    // capture library installed answers 1 (runtime error), which still proves
+    // clap did not demand -o. Requiring 0 here would only be testing whether
+    // the CI runner has libpcap/Npcap.
     let out = run(&["capture", "--list-devices"]);
-    assert_eq!(
+    assert_ne!(
         code(&out),
-        OK,
-        "--list-devices should not require -o: {}",
+        USAGE,
+        "--list-devices must not require -o: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        matches!(code(&out), OK | ERROR),
+        "unexpected exit {}: {}",
+        code(&out),
         String::from_utf8_lossy(&out.stderr)
     );
 }

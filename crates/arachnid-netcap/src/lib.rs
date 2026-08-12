@@ -32,9 +32,68 @@ pub struct DeviceInfo {
     pub loopback: bool,
 }
 
+/// Confirm the packet-capture library can actually be loaded.
+///
+/// `wpcap.dll` is delay-loaded on Windows (see `.cargo/config.toml`), so a
+/// missing Npcap no longer stops the process from starting — but calling into
+/// pcap without it would abort the process through the delay-load handler,
+/// which is not a Rust error anyone can catch. Every entry point that touches
+/// pcap calls this first so the operator gets a readable message instead.
+///
+/// On Unix libpcap is an ordinary shared-library dependency resolved at load
+/// time, so there is nothing to check.
+#[cfg(not(windows))]
+pub fn ensure_pcap_available() -> Result<()> {
+    Ok(())
+}
+
+#[cfg(windows)]
+pub fn ensure_pcap_available() -> Result<()> {
+    use std::sync::Once;
+
+    // Npcap installs to System32\Npcap, which is deliberately *not* on the
+    // default DLL search path. Prepending it to PATH is the stdlib-only way to
+    // let the delay-load resolver find it; the alternative is an FFI call to
+    // SetDllDirectory. Done once, before any capture thread exists, because
+    // set_var is not safe to race against other threads reading the
+    // environment.
+    static PREPARE_SEARCH_PATH: Once = Once::new();
+    PREPARE_SEARCH_PATH.call_once(|| {
+        let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        let npcap = std::path::PathBuf::from(sysroot).join(r"System32\Npcap");
+        if npcap.is_dir() {
+            let path = std::env::var("PATH").unwrap_or_default();
+            std::env::set_var("PATH", format!("{};{}", npcap.display(), path));
+        }
+    });
+
+    if wpcap_location().is_some() {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Npcap is not installed, or wpcap.dll is not on the DLL search path.\n\
+         Packet capture and PCAP parsing need it; install Npcap from https://npcap.com/.\n\
+         Every other subcommand (collect, verify, report) runs without it."
+    )
+}
+
+/// First `wpcap.dll` the loader would find. Searches PATH, which on a default
+/// Windows install already contains System32, plus the Npcap directory added
+/// above.
+#[cfg(windows)]
+fn wpcap_location() -> Option<std::path::PathBuf> {
+    let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    let system32 = std::path::PathBuf::from(sysroot).join("System32");
+    std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .chain([system32])
+        .map(|dir| dir.join("wpcap.dll"))
+        .find(|dll| dll.is_file())
+}
+
 /// Interfaces available for capture. Requires the same privilege as capture
 /// itself (root / `CAP_NET_RAW` on Linux, Npcap driver access on Windows).
 pub fn list_devices() -> Result<Vec<DeviceInfo>> {
+    ensure_pcap_available()?;
     Ok(pcap::Device::list()
         .context("enumerate capture devices")?
         .into_iter()
@@ -98,6 +157,7 @@ pub struct CaptureStats {
 /// flushed before returning, including on the `stop` path, so an operator-
 /// interrupted capture still yields a readable file.
 pub fn capture_live(opts: &LiveOptions, out: &Path, stop: &AtomicBool) -> Result<CaptureStats> {
+    ensure_pcap_available()?;
     let device = pcap::Device::list()
         .context("enumerate capture devices")?
         .into_iter()
@@ -253,6 +313,7 @@ type FlowKey = (u8, String, u16, String, u16);
 /// Parse a PCAP or PCAPNG savefile: build the flow table, reassemble TCP
 /// streams, and extract indicators. Read-only against the input file.
 pub fn parse_pcap(path: &Path, opts: &ParseOptions) -> Result<PcapAnalysis> {
+    ensure_pcap_available()?;
     let mut cap = pcap::Capture::from_file(path)
         .with_context(|| format!("open savefile {}", path.display()))?;
     if let Some(f) = &opts.filter {

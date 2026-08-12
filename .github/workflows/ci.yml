@@ -27,9 +27,12 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libpcap-dev
 
-      # The Npcap SDK provides the wpcap import library. The Npcap driver itself
-      # is not installed: CI never captures, it only builds and runs the
-      # unprivileged tests.
+      # The Npcap SDK provides the wpcap import library, which is all the link
+      # step needs. The Npcap runtime is deliberately not installed: wpcap.dll
+      # is delay-loaded (see .cargo/config.toml), so the binary starts without
+      # it and every test that does not touch pcap runs normally. That also
+      # makes CI a standing check that the no-Npcap path works, which is how
+      # most analyst workstations are configured.
       - name: Install Npcap SDK (Windows)
         if: runner.os == 'Windows'
         run: |
