@@ -513,6 +513,28 @@ pub fn verify(root: &Path) -> Result<VerifyReport> {
     })
 }
 
+/// Read a container's custody records in order, without checking them.
+///
+/// For display only. Signatures and the hash chain are [`verify`]'s business; a
+/// front end that renders this must not imply the log has been validated.
+pub fn read_log(root: &Path) -> Result<Vec<Record>> {
+    let f = File::open(root.join("custody.log")).context("read custody.log")?;
+    let mut out = Vec::new();
+    for (i, line) in BufReader::new(f).lines().enumerate() {
+        let line = line?;
+        // Signature and separator are verify's concern; skip past them.
+        let body = match line.split_once(' ') {
+            Some((_, body)) => body,
+            None => bail!("custody.log line {}: no signature separator", i + 1),
+        };
+        out.push(
+            serde_json::from_str(body)
+                .with_context(|| format!("custody.log line {}: unparseable record", i + 1))?,
+        );
+    }
+    Ok(out)
+}
+
 fn walk(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
