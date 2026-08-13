@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -157,6 +157,32 @@ pub struct CaptureStats {
 /// flushed before returning, including on the `stop` path, so an operator-
 /// interrupted capture still yields a readable file.
 pub fn capture_live(opts: &LiveOptions, out: &Path, stop: &AtomicBool) -> Result<CaptureStats> {
+    capture_live_with_progress(opts, out, stop, &Progress::default())
+}
+
+/// Live counters a front end can poll while a capture runs.
+///
+/// Plain atomics rather than a channel of packets: the capture loop must not do
+/// per-packet work on behalf of a UI, because falling behind the link drops
+/// evidence. Counters are the most a display can be given for free; packet
+/// detail comes from [`parse_pcap`] once the savefile is closed.
+#[derive(Debug, Default)]
+pub struct Progress {
+    /// Packets written to the savefile so far.
+    pub packets: AtomicU64,
+    /// Captured bytes written so far.
+    pub bytes: AtomicU64,
+}
+
+/// As [`capture_live`], publishing running totals to `progress` as it goes.
+///
+/// Observation only: what is captured and what is written are unchanged.
+pub fn capture_live_with_progress(
+    opts: &LiveOptions,
+    out: &Path,
+    stop: &AtomicBool,
+    progress: &Progress,
+) -> Result<CaptureStats> {
     ensure_pcap_available()?;
     let device = pcap::Device::list()
         .context("enumerate capture devices")?
@@ -211,6 +237,8 @@ pub fn capture_live(opts: &LiveOptions, out: &Path, stop: &AtomicBool) -> Result
                 bytes += pkt.header.caplen as u64;
                 packets += 1;
                 savefile.write(&pkt);
+                progress.packets.store(packets, Ordering::Relaxed);
+                progress.bytes.store(bytes, Ordering::Relaxed);
             }
             Err(pcap::Error::TimeoutExpired) | Err(pcap::Error::NoMorePackets) => {
                 // Non-blocking mode returns immediately; yield instead of spinning.
