@@ -88,3 +88,88 @@ pub fn mark(ok: bool) -> &'static str {
         "FAIL"
     }
 }
+
+// ---------------------------------------------------------------------------
+// Frame
+// ---------------------------------------------------------------------------
+
+pub fn render(frame: &mut Frame, app: &mut App) {
+    let full = frame.area();
+    let t = Theme::get();
+
+    if full.width < 32 || full.height < 8 {
+        frame.render_widget(
+            Paragraph::new("terminal too small\nneeds 32x8")
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: true }),
+            full,
+        );
+        return;
+    }
+
+    if app.screen == AppScreen::Splash {
+        splash(frame, full, app, t);
+        return;
+    }
+
+    // The log pane is the first thing to go when there is no room for it: it is
+    // a debugging aid, and the screen under it is the work.
+    let log_h = if app.show_log && full.height >= 18 {
+        9
+    } else {
+        0
+    };
+    let banner_h = u16::from(banner_text(app).is_some() && full.height >= 12);
+
+    let [header, banner_area, body, log_area, footer] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(banner_h),
+        Constraint::Min(3),
+        Constraint::Length(log_h),
+        Constraint::Length(1),
+    ])
+    .areas(full);
+
+    tabs(frame, header, app, t);
+    if banner_h > 0 {
+        const HINT: &str = "  (Esc dismisses)";
+        let room = (banner_area.width as usize).saturating_sub(3 + HINT.len());
+        let text = ellipsis(&banner_text(app).unwrap_or_default(), room);
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(" ! ", Style::new().fg(t.warn).add_modifier(Modifier::BOLD)),
+                Span::raw(text),
+                Span::styled(HINT, t.dimmed()),
+            ])),
+            banner_area,
+        );
+    }
+
+    screens::render(frame, body, app);
+
+    if log_h > 0 {
+        log_pane(frame, log_area, app, t);
+    }
+    footer_line(frame, footer, app, t);
+
+    if app.show_help {
+        help(frame, full, app, t);
+    }
+    if let Some(c) = &app.confirm {
+        confirm(frame, full, &c.prompt, t);
+    }
+}
+
+fn banner_text(app: &App) -> Option<String> {
+    // The Dashboard prints every warning in full; a banner there would only
+    // repeat itself.
+    if app.banner_dismissed || app.screen == AppScreen::Dashboard {
+        return None;
+    }
+    let w = &app.init.as_ref()?.warnings;
+    match w.len() {
+        0 => None,
+        1 => Some(w[0].clone()),
+        n => Some(format!("{} (+{} more, see Dashboard)", w[0], n - 1)),
+    }
+}
