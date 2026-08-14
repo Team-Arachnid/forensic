@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/arachnid-core-cli",
+    "crates/arachnid-core-tui",
     "crates/arachnid-collect",
     "crates/arachnid-netcap",
     "crates/arachnid-evidence",
