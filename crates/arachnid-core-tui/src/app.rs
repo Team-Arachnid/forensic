@@ -168,3 +168,74 @@ pub fn global_for(key: &KeyEvent) -> Option<Global> {
         })
         .map(|b| b.action)
 }
+
+// ---------------------------------------------------------------------------
+// Operational log
+// ---------------------------------------------------------------------------
+
+/// Lines kept in the operational log pane. Bounded because a chatty capture can
+/// emit for hours and the pane is a debugging aid, not evidence.
+const LOG_CAP: usize = 1000;
+
+/// A `tracing` writer that keeps the last [`LOG_CAP`] lines in memory for the
+/// log pane. Distinct from the evidence log, which lives in the container and is
+/// never written here.
+#[derive(Clone, Default)]
+pub struct LogBuf(Arc<Mutex<VecDeque<String>>>);
+
+impl LogBuf {
+    /// The most recent `n` lines, oldest first.
+    pub fn tail(&self, n: usize) -> Vec<String> {
+        let q = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        q.iter().skip(q.len().saturating_sub(n)).cloned().collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).len()
+    }
+}
+
+impl io::Write for LogBuf {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut q = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        for line in String::from_utf8_lossy(buf).lines() {
+            if !line.trim().is_empty() {
+                q.push_back(line.to_string());
+            }
+        }
+        while q.len() > LOG_CAP {
+            q.pop_front();
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogBuf {
+    type Writer = LogBuf;
+    fn make_writer(&'a self) -> LogBuf {
+        self.clone()
+    }
+}
+
+/// Route `tracing` into the log pane instead of the terminal, which from here on
+/// belongs to the alternate screen.
+///
+/// Timestamps are omitted: the pane is narrow and this is the operational log.
+/// The timestamps that matter forensically are in the container's custody log.
+pub fn install_log() -> LogBuf {
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let buf = LogBuf::default();
+    let filter = EnvFilter::try_from_env("ARACHNID_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+    fmt()
+        .with_env_filter(filter)
+        .with_ansi(false)
+        .without_time()
+        .with_writer(buf.clone())
+        .init();
+    buf
+}
