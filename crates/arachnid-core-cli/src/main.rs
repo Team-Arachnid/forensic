@@ -17,7 +17,7 @@ use anyhow::{bail, Context, Result};
 use arachnid_collect as collect;
 use arachnid_evidence::{Container, VerifyReport};
 use arachnid_netcap as netcap;
-use arachnid_report::{to_html, to_markdown, Report};
+use arachnid_report::{seal_into, to_html, to_markdown, Report};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// Exit codes, stable across releases so SOAR playbooks can branch on them.
@@ -569,11 +569,7 @@ fn cmd_report(_cli: &Cli, a: &ReportArgs) -> Result<u8> {
 /// summary is covered by the same custody chain as the evidence it describes.
 fn finish(cli: &Cli, mut container: Container, report: Report, partial: bool) -> Result<u8> {
     let md = to_markdown(&report);
-
-    let json = report.to_json()?;
-    container.add_bytes("report.json", &json)?;
-    container.add_bytes("report.md", md.as_bytes())?;
-    container.add_bytes("report.html", to_html(&report).as_bytes())?;
+    let json = seal_into(&mut container, &report)?;
 
     let fingerprint = container.key_fingerprint();
     let root = container.root().to_path_buf();
