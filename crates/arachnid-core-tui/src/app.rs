@@ -239,3 +239,79 @@ pub fn install_log() -> LogBuf {
         .init();
     buf
 }
+
+// ---------------------------------------------------------------------------
+// Persisted state
+// ---------------------------------------------------------------------------
+
+/// What the TUI remembers between runs. Convenience only: nothing here is
+/// evidence, and losing the file costs the operator two path retypes.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct Saved {
+    #[serde(default)]
+    pub operator: String,
+    #[serde(default)]
+    pub last_container: Option<String>,
+    #[serde(default)]
+    pub recent_pcaps: Vec<String>,
+    #[serde(default)]
+    pub recent_containers: Vec<String>,
+    #[serde(default)]
+    pub last_verify: Option<String>,
+}
+
+const RECENTS: usize = 8;
+
+impl Saved {
+    fn path() -> Option<PathBuf> {
+        let base = std::env::var_os("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("APPDATA").map(PathBuf::from))
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("state"))
+            })?;
+        Some(base.join("arachnid").join("tui-state.json"))
+    }
+
+    fn load() -> Self {
+        let mut s: Self = Self::path()
+            .and_then(|p| std::fs::read(p).ok())
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        if s.operator.is_empty() {
+            s.operator = default_operator();
+        }
+        s
+    }
+
+    /// Best-effort. A UI convenience file is never worth failing a run over, so
+    /// a write error becomes a log line and nothing else.
+    fn save(&self) {
+        let Some(path) = Self::path() else { return };
+        let ok = path
+            .parent()
+            .map(std::fs::create_dir_all)
+            .transpose()
+            .and_then(|_| serde_json::to_vec_pretty(self).map_err(Into::into))
+            .and_then(|b| std::fs::write(&path, b));
+        if let Err(e) = ok {
+            tracing::debug!(error = %e, path = %path.display(), "could not save TUI state");
+        }
+    }
+
+    fn remember(list: &mut Vec<String>, value: &str) {
+        list.retain(|v| v != value);
+        list.insert(0, value.to_string());
+        list.truncate(RECENTS);
+    }
+}
+
+/// Same rule the CLI uses, so a container collected from either front end
+/// records the operator the same way.
+pub fn default_operator() -> String {
+    let user = std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "unknown".into());
+    format!("{user}@{}", std::env::consts::OS)
+}
+
