@@ -63,3 +63,108 @@ impl AppScreen {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Keymap
+// ---------------------------------------------------------------------------
+
+/// One key a binding responds to.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Chord {
+    pub code: KeyCode,
+    pub ctrl: bool,
+}
+
+const fn k(code: KeyCode) -> Chord {
+    Chord { code, ctrl: false }
+}
+const fn ctrl(code: KeyCode) -> Chord {
+    Chord { code, ctrl: true }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Global {
+    Next,
+    Prev,
+    Jump,
+    Help,
+    Log,
+    Back,
+    Quit,
+}
+
+/// A global binding: the keys that trigger it, the label the help shows, and
+/// what it does.
+pub struct Binding {
+    pub chords: &'static [Chord],
+    pub label: &'static str,
+    pub desc: &'static str,
+    pub action: Global,
+}
+
+/// Global keybindings. Rendered by the help overlay and dispatched by
+/// [`global_for`]; keep the two adjacent so neither can drift.
+pub const GLOBAL: &[Binding] = &[
+    Binding {
+        chords: &[k(KeyCode::Tab)],
+        label: "Tab",
+        desc: "next screen",
+        action: Global::Next,
+    },
+    Binding {
+        chords: &[k(KeyCode::BackTab)],
+        label: "Shift-Tab",
+        desc: "previous screen",
+        action: Global::Prev,
+    },
+    Binding {
+        chords: &[
+            k(KeyCode::Char('1')),
+            k(KeyCode::Char('2')),
+            k(KeyCode::Char('3')),
+            k(KeyCode::Char('4')),
+            k(KeyCode::Char('5')),
+            k(KeyCode::Char('6')),
+        ],
+        label: "1-6",
+        desc: "jump to screen",
+        action: Global::Jump,
+    },
+    Binding {
+        chords: &[k(KeyCode::Char('?'))],
+        label: "?",
+        desc: "this help",
+        action: Global::Help,
+    },
+    Binding {
+        chords: &[ctrl(KeyCode::Char('l'))],
+        label: "Ctrl-L",
+        desc: "toggle operational log",
+        action: Global::Log,
+    },
+    Binding {
+        chords: &[k(KeyCode::Esc)],
+        label: "Esc",
+        desc: "back / dismiss",
+        action: Global::Back,
+    },
+    Binding {
+        chords: &[k(KeyCode::Char('q'))],
+        label: "q",
+        desc: "quit",
+        action: Global::Quit,
+    },
+];
+
+/// Resolve a key event against [`GLOBAL`]. Linear over seven entries, once per
+/// keypress: a lookup table would be more code than the scan it replaces.
+pub fn global_for(key: &KeyEvent) -> Option<Global> {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    GLOBAL
+        .iter()
+        .find(|b| {
+            b.chords
+                .iter()
+                .any(|c| c.ctrl == ctrl && c.code == key.code)
+        })
+        .map(|b| b.action)
+}
