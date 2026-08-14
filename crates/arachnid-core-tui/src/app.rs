@@ -315,3 +315,73 @@ pub fn default_operator() -> String {
     format!("{user}@{}", std::env::consts::OS)
 }
 
+// ---------------------------------------------------------------------------
+// Background work
+// ---------------------------------------------------------------------------
+
+/// What the splash-time probes found. Failures are banner material, never a
+/// reason to refuse to start: an unprivileged operator can still verify and
+/// report on a container collected elsewhere.
+#[derive(Debug, Default)]
+pub struct InitReport {
+    pub privilege: String,
+    pub elevated: bool,
+    pub devices: Vec<netcap::DeviceInfo>,
+    pub capture_error: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+/// A capture running in the background. Held on [`App`] rather than in the
+/// Capture screen's state so it survives the operator navigating away, which is
+/// the whole point of running it on its own thread.
+pub struct Running {
+    pub stop: Arc<AtomicBool>,
+    pub progress: Arc<netcap::Progress>,
+    pub started: Instant,
+    pub device: String,
+    pub output: PathBuf,
+}
+
+/// A blocking job the operator started. One at a time: two concurrent runs would
+/// mean two containers with interleaved custody timestamps.
+pub struct Job {
+    pub label: &'static str,
+    pub started: Instant,
+}
+
+pub enum Msg {
+    Init(Box<InitReport>),
+    /// A collector is about to run, by name from `arachnid_collect::COLLECTORS`.
+    CollectStep(String),
+    CollectDone(Box<Result<screens::collect::Done, String>>),
+    CaptureDone(Box<Result<screens::capture::Done, String>>),
+    ParseDone(Box<Result<screens::parse::Done, String>>),
+    ExportDone(Result<String, String>),
+    VerifyDone(Box<Result<screens::verify::Done, String>>),
+    ReportDone(Box<Result<screens::report::Done, String>>),
+    CustodyDone(Box<Result<screens::custody::Done, String>>),
+    Toast(String, bool),
+}
+
+pub struct Toast {
+    pub text: String,
+    pub error: bool,
+    pub at: Instant,
+}
+
+/// A pending yes/no. Every session-affecting action goes through one; nothing
+/// that starts, replaces or stops evidence collection happens on a single key.
+pub struct Confirm {
+    pub prompt: String,
+    pub action: Action,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    Quit,
+    StopCapture,
+    StartCollect,
+    StartCapture,
+    Export,
+}
+
