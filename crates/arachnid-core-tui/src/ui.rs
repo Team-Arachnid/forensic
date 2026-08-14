@@ -173,3 +173,89 @@ fn banner_text(app: &App) -> Option<String> {
         n => Some(format!("{} (+{} more, see Dashboard)", w[0], n - 1)),
     }
 }
+
+fn tabs(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
+    let here = TABS.iter().position(|&s| s == app.screen);
+
+    // Below 80 columns the full tab strip does not fit, so it collapses to a
+    // position indicator rather than being truncated into nonsense.
+    if area.width < 80 {
+        let label = match here {
+            Some(i) => format!(
+                " arachnid  {}/{}  {}",
+                i + 1,
+                TABS.len(),
+                app.screen.title()
+            ),
+            None => format!(" arachnid  {}", app.screen.title()),
+        };
+        frame.render_widget(Paragraph::new(Span::styled(label, t.selected())), area);
+        return;
+    }
+
+    let mut spans = vec![Span::styled(" arachnid ", t.dimmed())];
+    for (i, tab) in TABS.iter().enumerate() {
+        let selected = here == Some(i);
+        spans.push(Span::styled(
+            format!(" {}:{} ", i + 1, tab.title()),
+            if selected { t.selected() } else { t.dimmed() },
+        ));
+    }
+    if here.is_none() {
+        spans.push(Span::styled(
+            format!("  {} ", app.screen.title()),
+            t.selected(),
+        ));
+    }
+    // Work in flight stays visible from every screen; that is the point of
+    // running it on its own thread.
+    if app.capture.is_some() {
+        spans.push(Span::styled(
+            "  [capturing]",
+            Style::new().fg(t.warn).add_modifier(Modifier::BOLD),
+        ));
+    }
+    if let Some(j) = &app.busy {
+        spans.push(Span::styled(
+            format!("  [{} {}s]", j.label, j.started.elapsed().as_secs()),
+            Style::new().fg(t.warn),
+        ));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+fn footer_line(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
+    if let Some(toast) = &app.toast {
+        let style = if toast.error {
+            Style::new().fg(t.bad).add_modifier(Modifier::BOLD)
+        } else {
+            Style::new().fg(t.ok)
+        };
+        let tag = if toast.error { " error " } else { " ok " };
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(tag, style),
+                Span::raw(toast.text.clone()),
+            ])),
+            area,
+        );
+        return;
+    }
+
+    // Both halves come from the same tables the help overlay reads. The help
+    // binding goes first: the footer is the only thing that gets truncated, and
+    // the way to the full list must never be what falls off the end.
+    let (help, rest): (Vec<_>, Vec<_>) = GLOBAL.iter().partition(|b| b.action == Global::Help);
+    let mut parts: Vec<String> = help
+        .iter()
+        .map(|b| format!("{} {}", b.label, b.desc))
+        .collect();
+    parts.extend(
+        screens::keys(app.screen)
+            .iter()
+            .map(|(k, d)| format!("{k} {d}")),
+    );
+    parts.extend(rest.iter().map(|b| format!("{} {}", b.label, b.desc)));
+    let line = format!(" {}", parts.join("  ·  "));
+    frame.render_widget(Paragraph::new(Span::styled(line, t.dimmed())), area);
+}
