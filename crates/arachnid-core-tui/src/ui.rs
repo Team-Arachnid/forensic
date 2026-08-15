@@ -282,3 +282,79 @@ fn log_pane(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
         .collect();
     frame.render_widget(Paragraph::new(text), inner);
 }
+
+// ---------------------------------------------------------------------------
+// Splash
+// ---------------------------------------------------------------------------
+
+/// The wordmark, 23 columns wide, every row the same width so it centres cleanly.
+const ART: [&str; 8] = [
+    r"        /\   /\        ",
+    r"       (  o.o  )       ",
+    r"         > ^ <         ",
+    r"_.-'~~~~~~~~~~~~~~~'-._",
+    r".'                   '.",
+    r"|      ARACHNID       |",
+    r"|  F O R E N S I C S  |",
+    r"'.___________________.'",
+];
+
+const ART_W: u16 = 23;
+
+fn splash(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
+    let status = match &app.init {
+        None => format!("{} checking host…", app.spinner()),
+        Some(r) if r.warnings.is_empty() => "ready".into(),
+        Some(r) => format!("ready — {} warning(s)", r.warnings.len()),
+    };
+
+    // Too narrow or too short for the art: a plain wordmark says the same thing
+    // and never wraps into rubble.
+    if area.width < ART_W + 4 || area.height < 14 {
+        let text = vec![
+            Line::from(Span::styled(
+                "ARACHNID FORENSICS",
+                Style::new().fg(t.accent).add_modifier(Modifier::BOLD),
+            )),
+            Line::raw("Core — live triage & network forensics"),
+            Line::raw(""),
+            Line::styled(status, t.dimmed()),
+        ];
+        frame.render_widget(
+            Paragraph::new(text).alignment(Alignment::Center),
+            centre(area, 42, 4),
+        );
+        return;
+    }
+
+    // Progressive reveal: one row every other tick, so the mark draws itself in
+    // roughly half the minimum splash time and is whole well before it ends.
+    let shown = ((app.frame / 2) as usize + 1).min(ART.len());
+    let mut text: Vec<Line> = ART[..shown]
+        .iter()
+        .map(|l| Line::from(Span::styled(*l, Style::new().fg(t.accent))))
+        .collect();
+    text.resize(ART.len(), Line::raw(""));
+    text.push(Line::raw(""));
+    text.push(Line::styled(status, t.dimmed()));
+    text.push(Line::styled("authorized DFIR use only", t.dimmed()));
+
+    frame.render_widget(
+        Paragraph::new(text).alignment(Alignment::Center),
+        centre(area, ART_W + 2, ART.len() as u16 + 3),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Overlays
+// ---------------------------------------------------------------------------
+
+pub fn centre(area: Rect, w: u16, h: u16) -> Rect {
+    let [row] = Layout::vertical([Constraint::Length(h.min(area.height))])
+        .flex(Flex::Center)
+        .areas(area);
+    let [cell] = Layout::horizontal([Constraint::Length(w.min(area.width))])
+        .flex(Flex::Center)
+        .areas(row);
+    cell
+}
