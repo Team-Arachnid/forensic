@@ -430,3 +430,77 @@ fn popup(frame: &mut Frame, area: Rect, title: &str, lines: Vec<Line>, t: &Theme
     frame.render_widget(block, area);
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
+
+// ---------------------------------------------------------------------------
+// Shared widgets
+// ---------------------------------------------------------------------------
+
+/// A labelled text field. `focused` is where the cursor keys are; `editing` says
+/// the keyboard is inside it, which is shown with a block cursor because there
+/// is no other way to tell in a monochrome terminal.
+pub fn field(
+    frame: &mut Frame,
+    area: Rect,
+    label: &str,
+    value: &str,
+    focused: bool,
+    editing: bool,
+) {
+    let t = Theme::get();
+    let marker = if focused { ">" } else { " " };
+    let mut spans = vec![
+        Span::styled(
+            format!("{marker} {label:<14}"),
+            if focused { t.selected() } else { t.dimmed() },
+        ),
+        Span::raw(value.to_string()),
+    ];
+    if editing {
+        spans.push(Span::styled(
+            "█",
+            Style::new().add_modifier(Modifier::SLOW_BLINK),
+        ));
+    } else if value.is_empty() {
+        spans.push(Span::styled("(empty)", t.dimmed()));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// A status card: one label, one value, and an optional verdict colour.
+pub fn card(frame: &mut Frame, area: Rect, title: &str, lines: Vec<Line>) {
+    let t = Theme::get();
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(t.dimmed())
+        .title(Span::styled(format!(" {title} "), t.dimmed()));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), inner);
+}
+
+/// A horizontal bar for a count, drawn in text so it survives a monochrome
+/// terminal and a terminal without box-drawing glyphs alike.
+pub fn bar(count: u64, max: u64, width: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    let n = ((count as f64 / max as f64) * width as f64).round() as usize;
+    "#".repeat(n.clamp(usize::from(count > 0), width))
+}
+
+/// Truncate to `width` columns, marking that something was cut. Tables use this
+/// instead of letting a long path push the rest of a row off screen.
+pub fn ellipsis(s: &str, width: usize) -> String {
+    if s.chars().count() <= width {
+        return s.to_string();
+    }
+    let keep = width.saturating_sub(1);
+    let mut out: String = s.chars().take(keep).collect();
+    out.push('…');
+    out
+}
+
+/// The dim style as a `Stylize` shorthand for screens that only need the colour.
+pub fn dim(s: impl Into<String>) -> Span<'static> {
+    Span::raw(s.into()).style(Theme::get().dimmed())
+}
