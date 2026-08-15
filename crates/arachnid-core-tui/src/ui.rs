@@ -259,3 +259,26 @@ fn footer_line(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
     let line = format!(" {}", parts.join("  ·  "));
     frame.render_widget(Paragraph::new(Span::styled(line, t.dimmed())), area);
 }
+
+fn log_pane(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
+    let block = Block::bordered()
+        .border_type(BorderType::Plain)
+        .border_style(t.dimmed())
+        .title(Span::styled(
+            format!(" operational log — {} lines (Ctrl-L) ", app.log.len()),
+            t.dimmed(),
+        ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let rows = inner.height as usize;
+    let skip = app.log_scroll as usize;
+    let mut lines = app.log.tail(rows + skip);
+    lines.truncate(lines.len().saturating_sub(skip));
+    let start = lines.len().saturating_sub(rows);
+    let text: Vec<Line> = lines[start..]
+        .iter()
+        .map(|l| Line::raw(l.clone()))
+        .collect();
+    frame.render_widget(Paragraph::new(text), inner);
+}
