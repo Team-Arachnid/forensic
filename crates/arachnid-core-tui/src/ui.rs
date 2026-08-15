@@ -358,3 +358,75 @@ pub fn centre(area: Rect, w: u16, h: u16) -> Rect {
         .areas(row);
     cell
 }
+
+fn help(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
+    let mut lines = vec![Line::styled(
+        format!("{} — screen keys", app.screen.title()),
+        t.selected(),
+    )];
+    let screen_keys = screens::keys(app.screen);
+    if screen_keys.is_empty() {
+        lines.push(Line::styled("  (none)", t.dimmed()));
+    }
+    for (k, d) in screen_keys {
+        lines.push(binding_line(k, d, t));
+    }
+    lines.push(Line::raw(""));
+    lines.push(Line::styled("global", t.selected()));
+    for b in GLOBAL {
+        lines.push(binding_line(b.label, b.desc, t));
+    }
+    lines.push(Line::raw(""));
+    lines.push(Line::styled(
+        "  lists: j/k or arrows, Enter selects, Esc backs out",
+        t.dimmed(),
+    ));
+    lines.push(Line::styled("  any key closes this", t.dimmed()));
+
+    let h = (lines.len() as u16 + 2).min(area.height);
+    popup(
+        frame,
+        centre(area, 66.min(area.width), h),
+        " keybindings ",
+        lines,
+        t,
+    );
+}
+
+fn binding_line<'a>(k: &'a str, d: &'a str, t: &Theme) -> Line<'a> {
+    Line::from(vec![
+        Span::styled(format!("  {k:<12}"), Style::new().fg(t.accent)),
+        Span::raw(d),
+    ])
+}
+
+fn confirm(frame: &mut Frame, area: Rect, prompt: &str, t: &Theme) {
+    let lines = vec![
+        Line::raw(prompt.to_string()),
+        Line::raw(""),
+        Line::from(vec![
+            Span::styled("y", Style::new().fg(t.accent).add_modifier(Modifier::BOLD)),
+            Span::raw(" confirm    "),
+            Span::styled("n", Style::new().fg(t.accent).add_modifier(Modifier::BOLD)),
+            Span::raw(" / Esc cancel"),
+        ]),
+    ];
+    // Grow to fit the prompt. A confirmation that clips the path it is asking
+    // about is asking the operator to approve something they cannot read.
+    let w = 62.min(area.width);
+    let inner = (w as usize).saturating_sub(2).max(1);
+    let wrapped = prompt.chars().count().div_ceil(inner) as u16;
+    let h = (wrapped + 4).min(area.height);
+    popup(frame, centre(area, w, h), " confirm ", lines, t);
+}
+
+fn popup(frame: &mut Frame, area: Rect, title: &str, lines: Vec<Line>, t: &Theme) {
+    frame.render_widget(Clear, area);
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(t.accent))
+        .title(Span::styled(title.to_string(), t.selected()));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+}
