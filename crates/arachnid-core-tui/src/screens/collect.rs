@@ -257,3 +257,121 @@ pub fn finished(app: &mut App, result: Result<Done, String>) {
         }
     }
 }
+
+pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
+    let t = Theme::get();
+    let s = &app.collect;
+    let running = app.busy.is_some();
+
+    let [form, progress, result] = Layout::vertical([
+        Constraint::Length(FIELDS as u16 + 1),
+        Constraint::Length(collect::COLLECTORS.len() as u16 + 2),
+        Constraint::Min(3),
+    ])
+    .areas(area);
+
+    let rows: [Rect; 5] = Layout::vertical([Constraint::Length(1); 5]).areas(form);
+    ui::field(
+        frame,
+        rows[0],
+        "output dir",
+        &s.output.value,
+        s.focus == 0,
+        app.editing && s.focus == 0,
+    );
+    ui::field(
+        frame,
+        rows[1],
+        "operator",
+        &s.operator.value,
+        s.focus == 1,
+        app.editing && s.focus == 1,
+    );
+    ui::field(
+        frame,
+        rows[2],
+        "signing key",
+        &s.signing_key.value,
+        s.focus == 2,
+        app.editing && s.focus == 2,
+    );
+    ui::field(
+        frame,
+        rows[3],
+        "hash binaries",
+        if s.hash_binaries { "yes" } else { "no" },
+        s.focus == 3,
+        false,
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(ui::dim(if s.signing_key.trimmed().is_empty() {
+            "  no signing key: a key is generated for this run alone — record its fingerprint"
+        } else {
+            "  container will be signed with the key at this path"
+        }))),
+        rows[4],
+    );
+
+    // -- collector checklist
+    let mut lines = vec![Line::from(ui::dim(" collectors"))];
+    for (name, state) in &s.steps {
+        let (glyph, style) = match state {
+            Step::Pending => ("·".to_string(), t.dimmed()),
+            Step::Running if running => (app.spinner().to_string(), t.selected()),
+            // A step left "running" after the job ended never reported back.
+            Step::Running => ("?".to_string(), t.verdict(false)),
+            Step::Done => {
+                let degraded = s
+                    .done
+                    .as_ref()
+                    .is_some_and(|d| d.warnings.iter().any(|w| w.starts_with(name)));
+                (
+                    if degraded {
+                        "!".into()
+                    } else {
+                        "+".to_string()
+                    },
+                    t.verdict(!degraded),
+                )
+            }
+        };
+        let count = s
+            .done
+            .as_ref()
+            .and_then(|d| d.counts.iter().find(|(n, _)| n == name))
+            .map(|(_, c)| format!("{c}"))
+            .unwrap_or_default();
+        lines.push(Line::from(vec![
+            Span::styled(format!("  {glyph} "), style),
+            Span::raw(format!("{name:<16}")),
+            ui::dim(count),
+        ]));
+    }
+    frame.render_widget(Paragraph::new(lines), progress);
+
+    // -- outcome
+    let mut out = Vec::new();
+    match &s.done {
+        None if running => out.push(Line::from(ui::dim(" collecting…"))),
+        None => out.push(Line::from(ui::dim(
+            " press r to run. Nothing on this host is modified; the only writes go to the container.",
+        ))),
+        Some(d) => {
+            out.push(Line::from(vec![
+                ui::dim(" container   "),
+                Span::raw(d.root.display().to_string()),
+            ]));
+            out.push(Line::from(vec![
+                ui::dim(" key sha256  "),
+                Span::raw(d.fingerprint.clone()),
+            ]));
+            out.push(Line::from(ui::dim(
+                " record that fingerprint out-of-band; verify can only prove origin against it",
+            )));
+            for w in &d.warnings {
+                out.push(Line::styled(format!(" ! {w}"), t.verdict(false)));
+            }
+        }
+    }
+    frame.render_widget(Paragraph::new(out), result);
+}
