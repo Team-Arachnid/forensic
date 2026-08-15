@@ -504,3 +504,37 @@ pub fn ellipsis(s: &str, width: usize) -> String {
 pub fn dim(s: impl Into<String>) -> Span<'static> {
     Span::raw(s.into()).style(Theme::get().dimmed())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The art has to be rectangular or centring it tears the box apart.
+    #[test]
+    fn art_is_rectangular() {
+        for (i, line) in ART.iter().enumerate() {
+            assert_eq!(
+                line.chars().count(),
+                ART_W as usize,
+                "row {i} is {:?}",
+                line
+            );
+        }
+    }
+
+    #[test]
+    fn ellipsis_marks_what_it_cuts() {
+        assert_eq!(ellipsis("abcdef", 6), "abcdef");
+        assert_eq!(ellipsis("abcdef", 4), "abc…");
+        assert_eq!(ellipsis("", 4), "");
+    }
+
+    /// A non-zero count must never render as an empty bar: "some" and "none"
+    /// have to look different.
+    #[test]
+    fn bar_shows_any_nonzero_count() {
+        assert_eq!(bar(0, 100, 10), "");
+        assert_eq!(bar(1, 100_000, 10).len(), 1);
+        assert_eq!(bar(100, 100, 10).len(), 10);
+    }
+}
