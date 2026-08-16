@@ -443,3 +443,108 @@ fn hms(d: Duration) -> String {
     let s = d.as_secs();
     format!("{:02}:{:02}:{:02}", s / 3600, (s / 60) % 60, s % 60)
 }
+
+fn result_rows(frame: &mut Frame, area: Rect, app: &App) {
+    let t = Theme::get();
+    let Some(d) = &app.capture_ui.last else {
+        frame.render_widget(
+            Paragraph::new(Line::from(ui::dim(" no capture from this session yet."))),
+            area,
+        );
+        return;
+    };
+
+    let dropped = d.stats.packets_dropped_kernel + d.stats.packets_dropped_interface;
+    let mut lines = vec![
+        Line::from(vec![
+            ui::dim(" container   "),
+            Span::raw(d.root.display().to_string()),
+        ]),
+        Line::from(vec![
+            ui::dim(" key sha256  "),
+            Span::raw(d.fingerprint.clone()),
+        ]),
+        Line::from(vec![
+            ui::dim(" written     "),
+            Span::raw(format!(
+                "{} packets, {}",
+                d.stats.packets_written,
+                bytes(d.stats.bytes_written)
+            )),
+            ui::dim("   stopped: "),
+            Span::raw(d.stats.stop_reason.clone()),
+        ]),
+        Line::from(vec![
+            ui::dim(" dropped     "),
+            Span::styled(
+                format!(
+                    "{} kernel / {} interface",
+                    d.stats.packets_dropped_kernel, d.stats.packets_dropped_interface
+                ),
+                t.verdict(dropped == 0),
+            ),
+            if dropped == 0 {
+                ui::dim("   no gaps")
+            } else {
+                Span::styled("   this capture has gaps", t.verdict(false))
+            },
+        ]),
+    ];
+
+    match &d.analysis {
+        None => lines.push(Line::from(ui::dim(
+            " savefile analysis unavailable — see the operational log (Ctrl-L)",
+        ))),
+        Some(a) => {
+            let tcp: u64 = a
+                .flows
+                .iter()
+                .filter(|f| f.protocol == "tcp")
+                .map(|f| f.packets)
+                .sum();
+            let udp: u64 = a
+                .flows
+                .iter()
+                .filter(|f| f.protocol == "udp")
+                .map(|f| f.packets)
+                .sum();
+            let max = tcp.max(udp).max(1);
+            lines.push(Line::raw(""));
+            lines.push(Line::from(ui::dim(format!(
+                " savefile analysis (display only, nothing written): {} flows, {} indicators",
+                a.flows.len(),
+                a.indicators.len()
+            ))));
+            for (name, n) in [("tcp", tcp), ("udp", udp)] {
+                lines.push(Line::from(vec![
+                    Span::raw(format!("  {name:<5}{n:>10}  ")),
+                    ui::dim(ui::bar(n, max, 24)),
+                ]));
+            }
+            lines.push(Line::from(ui::dim(format!(
+                "  {:<20}{:<22}{:<8}{:>10}",
+                "source", "destination", "proto", "packets"
+            ))));
+            let width = area.width as usize;
+            for f in a.flows.iter().take(FLOW_ROWS) {
+                lines.push(Line::raw(ui::ellipsis(
+                    &format!(
+                        "  {:<20}{:<22}{:<8}{:>10}",
+                        ui::ellipsis(&format!("{}:{}", f.src_addr, f.src_port), 19),
+                        ui::ellipsis(&format!("{}:{}", f.dst_addr, f.dst_port), 21),
+                        f.protocol,
+                        f.packets
+                    ),
+                    width,
+                )));
+            }
+            if a.flows.len() > FLOW_ROWS {
+                lines.push(Line::from(ui::dim(format!(
+                    "  … {} more flows — open the savefile in Parse PCAP for the full table",
+                    a.flows.len() - FLOW_ROWS
+                ))));
+            }
+        }
+    }
+    frame.render_widget(Paragraph::new(lines), area);
+}
