@@ -325,3 +325,121 @@ fn bytes(n: u64) -> String {
         format!("{v:.1} {}", UNITS[u])
     }
 }
+
+pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
+    let [form, live, results] = Layout::vertical([
+        Constraint::Length(FIELDS as u16 + 1),
+        Constraint::Length(4),
+        Constraint::Min(3),
+    ])
+    .areas(area);
+
+    form_rows(frame, form, app);
+    live_rows(frame, live, app);
+    result_rows(frame, results, app);
+}
+
+fn form_rows(frame: &mut Frame, area: Rect, app: &App) {
+    let s = &app.capture_ui;
+    let rows: [Rect; 7] = Layout::vertical([Constraint::Length(1); 7]).areas(area);
+    let device = match s.devices.get(s.device) {
+        Some(d) => format!(
+            "{}  ({}/{}){}",
+            d.name,
+            s.device + 1,
+            s.devices.len(),
+            if d.loopback { "  [loopback]" } else { "" }
+        ),
+        None => "none available".into(),
+    };
+    ui::field(frame, rows[0], "device  h/l", &device, s.focus == 0, false);
+    ui::field(
+        frame,
+        rows[1],
+        "output dir",
+        &s.output.value,
+        s.focus == 1,
+        app.editing && s.focus == 1,
+    );
+    ui::field(
+        frame,
+        rows[2],
+        "BPF filter",
+        &s.filter.value,
+        s.focus == 2,
+        app.editing && s.focus == 2,
+    );
+    ui::field(
+        frame,
+        rows[3],
+        "operator",
+        &s.operator.value,
+        s.focus == 3,
+        app.editing && s.focus == 3,
+    );
+    ui::field(
+        frame,
+        rows[4],
+        "signing key",
+        &s.signing_key.value,
+        s.focus == 4,
+        app.editing && s.focus == 4,
+    );
+    ui::field(
+        frame,
+        rows[5],
+        "promiscuous",
+        if s.promiscuous { "yes" } else { "no" },
+        s.focus == 5,
+        false,
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(ui::dim(if s.promiscuous {
+            "  promiscuous mode changes the interface's receive mode — an observable change"
+        } else {
+            "  capturing only frames addressed to this host"
+        }))),
+        rows[6],
+    );
+}
+
+fn live_rows(frame: &mut Frame, area: Rect, app: &App) {
+    let t = Theme::get();
+    let Some(c) = &app.capture else {
+        frame.render_widget(
+            Paragraph::new(Line::from(ui::dim(" not capturing — press s to start"))),
+            area,
+        );
+        return;
+    };
+
+    let packets = c.progress.packets.load(Ordering::Relaxed);
+    let written = c.progress.bytes.load(Ordering::Relaxed);
+    let elapsed = c.started.elapsed();
+    let rate = packets as f64 / elapsed.as_secs_f64().max(0.001);
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(format!(" {} capturing ", app.spinner()), t.selected()),
+            Span::raw(format!("on {} → {}", c.device, c.output.display())),
+        ]),
+        Line::from(vec![
+            ui::dim(" packets     "),
+            Span::raw(format!("{packets}")),
+            ui::dim("    bytes "),
+            Span::raw(bytes(written)),
+            ui::dim("    rate "),
+            Span::raw(format!("{rate:.0}/s")),
+            ui::dim("    elapsed "),
+            Span::raw(hms(elapsed)),
+        ]),
+        Line::from(ui::dim(
+            " drop counts and the flow breakdown come from the driver and the savefile when the capture stops",
+        )),
+    ];
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+fn hms(d: Duration) -> String {
+    let s = d.as_secs();
+    format!("{:02}:{:02}:{:02}", s / 3600, (s / 60) % 60, s % 60)
+}
