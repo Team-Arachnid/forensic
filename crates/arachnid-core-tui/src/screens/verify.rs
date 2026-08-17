@@ -1,0 +1,152 @@
+//! Verify: re-hash a container's artifacts and check them against its signed
+//! custody log.
+//!
+//! Every verdict on this screen comes from `arachnid_evidence::verify`. The TUI
+//! does not re-hash anything itself: a second implementation of verification is
+//! exactly what a forensic tool must not have, because then a bug in one could
+//! make a broken container look clean in the other.
+
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+use arachnid_evidence::{Manifest, VerifyReport};
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::Paragraph;
+use ratatui::Frame;
+
+use crate::app::{App, AppScreen, Input, Msg, Saved};
+use crate::ui::{self, Theme};
+
+pub const KEYS: &[(&str, &str)] = &[
+    ("j/k", "row"),
+    ("h/l", "recent container"),
+    ("Enter", "edit path"),
+    ("v", "verify"),
+    ("c", "chain of custody"),
+];
+
+pub struct State {
+    pub container: Input,
+    pub recent: Vec<String>,
+    pub recent_sel: usize,
+    pub row: usize,
+    pub done: Option<Done>,
+}
+
+pub struct Done {
+    pub report: VerifyReport,
+    pub manifest: Manifest,
+    pub verified_utc: String,
+    pub root: PathBuf,
+}
+
+impl State {
+    pub fn new(saved: &Saved) -> Self {
+        State {
+            container: Input::new(saved.last_container.clone().unwrap_or_default()),
+            recent: saved.recent_containers.clone(),
+            recent_sel: 0,
+            row: 0,
+            done: None,
+        }
+    }
+}
+
+pub fn on_key(app: &mut App, key: KeyEvent) -> bool {
+    if app.editing {
+        return app.verify.container.key(&key);
+    }
+    let rows = app
+        .verify
+        .done
+        .as_ref()
+        .map_or(0, |d| d.report.artifacts.len());
+    match key.code {
+        KeyCode::Char('j') | KeyCode::Down => super::step(&mut app.verify.row, 1, rows),
+        KeyCode::Char('k') | KeyCode::Up => super::step(&mut app.verify.row, -1, rows),
+        KeyCode::Char('l') | KeyCode::Right => {
+            let n = app.verify.recent.len();
+            super::step(&mut app.verify.recent_sel, 1, n);
+            adopt_recent(app);
+        }
+        KeyCode::Char('h') | KeyCode::Left => {
+            let n = app.verify.recent.len();
+            super::step(&mut app.verify.recent_sel, -1, n);
+            adopt_recent(app);
+        }
+        KeyCode::Enter => app.editing = true,
+        KeyCode::Char('v') => start(app),
+        KeyCode::Char('c') => {
+            let path = PathBuf::from(app.verify.container.trimmed());
+            super::custody::open(app, path, AppScreen::Verify);
+        }
+        _ => return false,
+    }
+    true
+}
+
+fn adopt_recent(app: &mut App) {
+    if let Some(p) = app.verify.recent.get(app.verify.recent_sel).cloned() {
+        app.verify.container.set(p);
+    }
+}
+
+fn start(app: &mut App) {
+    let root = PathBuf::from(app.verify.container.trimmed());
+    if root.as_os_str().is_empty() {
+        app.toast("a container path is required", true);
+        return;
+    }
+    if !app.begin("verification") {
+        return;
+    }
+    let tx = app.tx.clone();
+    std::thread::spawn(move || {
+        let r = run(&root).map_err(|e| format!("{e:#}"));
+        let _ = tx.send(Msg::VerifyDone(Box::new(r)));
+    });
+}
+
+fn run(root: &Path) -> Result<Done> {
+    let manifest: Manifest =
+        serde_json::from_slice(&std::fs::read(root.join("manifest.json")).with_context(|| {
+            format!("read {} (is this an Arachnid container?)", root.display())
+        })?)
+        .context("parse manifest.json")?;
+    let report =
+        arachnid_evidence::verify(root).with_context(|| format!("verify {}", root.display()))?;
+    Ok(Done {
+        report,
+        manifest,
+        verified_utc: arachnid_evidence::now_utc(),
+        root: root.to_path_buf(),
+    })
+}
+
+pub fn finished(app: &mut App, result: Result<Done, String>) {
+    match result {
+        Ok(done) => {
+            app.remember_container(&done.root);
+            let ok = done.report.ok();
+            app.saved.last_verify = Some(if ok {
+                format!("verified {} artifacts", done.report.artifacts_checked)
+            } else {
+                format!("FAILED: {} problem(s)", done.report.problems.len())
+            });
+            app.toast(
+                if ok {
+                    "VERIFIED: every artifact matches the signed custody log".into()
+                } else {
+                    format!("FAILED: {} problem(s)", done.report.problems.len())
+                },
+                !ok,
+            );
+            app.verify.row = 0;
+            app.verify.done = Some(done);
+        }
+        Err(e) => app.toast(e, true),
+    }
+}
