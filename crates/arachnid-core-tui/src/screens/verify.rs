@@ -150,3 +150,151 @@ pub fn finished(app: &mut App, result: Result<Done, String>) {
         Err(e) => app.toast(e, true),
     }
 }
+
+pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
+    let t = Theme::get();
+    let s = &app.verify;
+
+    let [path_row, recent, summary, table] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(if s.done.is_some() { 1 } else { 6 }),
+        Constraint::Length(if s.done.is_some() { 7 } else { 2 }),
+        Constraint::Min(3),
+    ])
+    .areas(area);
+
+    ui::field(
+        frame,
+        path_row,
+        "container",
+        &s.container.value,
+        true,
+        app.editing,
+    );
+
+    if s.done.is_none() {
+        let mut lines = vec![Line::from(ui::dim(" recent containers  (h/l)"))];
+        if s.recent.is_empty() {
+            lines.push(Line::from(ui::dim("   none yet")));
+        }
+        for (i, p) in s.recent.iter().take(4).enumerate() {
+            let selected = i == s.recent_sel;
+            lines.push(Line::from(Span::styled(
+                format!("   {} {}", if selected { ">" } else { " " }, p),
+                if selected { t.selected() } else { t.dimmed() },
+            )));
+        }
+        frame.render_widget(Paragraph::new(lines), recent);
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(ui::dim(
+                    " v  verify — re-reads and re-hashes every artifact",
+                )),
+                Line::from(ui::dim(" c  inspect the chain-of-custody log")),
+            ]),
+            summary,
+        );
+        return;
+    }
+
+    let d = s.done.as_ref().expect("checked above");
+    let r = &d.report;
+    let ok = r.ok();
+    frame.render_widget(
+        Paragraph::new(Line::from(ui::dim(
+            " c  chain of custody   ·   v  verify again",
+        ))),
+        recent,
+    );
+
+    let mut head = vec![
+        Line::from(vec![
+            Span::styled(
+                format!(" {} ", if ok { "VERIFIED" } else { "FAILED" }),
+                t.verdict(ok),
+            ),
+            Span::raw(if ok {
+                "every artifact matches the signed custody log".to_string()
+            } else {
+                format!("{} problem(s)", r.problems.len())
+            }),
+        ]),
+        Line::from(vec![
+            ui::dim(" key fingerprint  "),
+            Span::raw(r.key_fingerprint.clone()),
+        ]),
+        Line::from(ui::dim(
+            " this confirms internal consistency; it proves origin only against a fingerprint recorded at collection",
+        )),
+        Line::from(vec![
+            ui::dim(" collected  "),
+            Span::raw(d.manifest.created_utc.clone()),
+            ui::dim("    verified  "),
+            Span::raw(d.verified_utc.clone()),
+        ]),
+        Line::from(vec![
+            ui::dim(" schema  "),
+            Span::raw(r.schema_version.clone()),
+            ui::dim("    custody records  "),
+            Span::raw(format!("{}", r.records)),
+            ui::dim("    hashed  "),
+            Span::raw(format!("{}", r.artifacts_checked)),
+        ]),
+    ];
+    for p in r.problems.iter().take(2) {
+        head.push(Line::from(Span::styled(
+            format!(" ! {p}"),
+            t.verdict(false),
+        )));
+    }
+    if r.problems.len() > 2 {
+        head.push(Line::from(ui::dim(format!(
+            " … {} more problem(s), one per row below",
+            r.problems.len() - 2
+        ))));
+    }
+    frame.render_widget(Paragraph::new(head), summary);
+
+    // -- per-artifact table
+    let w = table.width as usize;
+    let mut lines = vec![Line::from(ui::dim(format!(
+        "  {:<6}{:<24}{:>12}  {:<64}",
+        "state", "artifact", "size", "sha256 as logged"
+    )))];
+    let rows = table.height.saturating_sub(1) as usize;
+    let start = window(s.row, rows, r.artifacts.len());
+    for (i, a) in r.artifacts.iter().enumerate().skip(start).take(rows) {
+        let text = format!(
+            "  {:<6}{:<24}{:>12}  {}",
+            ui::mark(a.ok),
+            ui::ellipsis(&a.name, 23),
+            a.size.map(|v| v.to_string()).unwrap_or_else(|| "-".into()),
+            a.sha256.clone().unwrap_or_else(|| "(none recorded)".into())
+        );
+        let mut style = t.verdict(a.ok);
+        if i == s.row {
+            style = style.patch(t.selected());
+        }
+        lines.push(Line::from(Span::styled(ui::ellipsis(&text, w), style)));
+    }
+    if start + rows < r.artifacts.len() {
+        lines.push(Line::from(ui::dim(format!(
+            "  … {} more",
+            r.artifacts.len() - start - rows
+        ))));
+    }
+    if let Some(note) = r.artifacts.get(s.row).and_then(|a| a.note.as_ref()) {
+        lines.push(Line::from(Span::styled(
+            format!("  {note}"),
+            Style::new().fg(t.bad),
+        )));
+    }
+    frame.render_widget(Paragraph::new(lines), table);
+}
+
+fn window(sel: usize, rows: usize, len: usize) -> usize {
+    if rows == 0 || len <= rows {
+        return 0;
+    }
+    sel.saturating_sub(rows - 1).min(len - rows)
+}
