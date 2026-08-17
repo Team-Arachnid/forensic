@@ -305,3 +305,245 @@ fn write_container(
     container.finish()?;
     Ok(root)
 }
+
+// ---------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------
+
+pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
+    match app.parse.mode {
+        Mode::Form => form(frame, area, app),
+        Mode::Results => results(frame, area, app),
+    }
+}
+
+fn form(frame: &mut Frame, area: Rect, app: &App) {
+    let s = &app.parse;
+    let [fields, recent, hint] = Layout::vertical([
+        Constraint::Length(FIELDS as u16),
+        Constraint::Min(2),
+        Constraint::Length(2),
+    ])
+    .areas(area);
+
+    let rows: [Rect; 5] = Layout::vertical([Constraint::Length(1); 5]).areas(fields);
+    ui::field(
+        frame,
+        rows[0],
+        "pcap file",
+        &s.input.value,
+        s.focus == 0,
+        app.editing && s.focus == 0,
+    );
+    ui::field(
+        frame,
+        rows[1],
+        "BPF filter",
+        &s.filter.value,
+        s.focus == 1,
+        app.editing && s.focus == 1,
+    );
+    ui::field(
+        frame,
+        rows[2],
+        "output dir",
+        &s.output.value,
+        s.focus == 2,
+        app.editing && s.focus == 2,
+    );
+    ui::field(
+        frame,
+        rows[3],
+        "operator",
+        &s.operator.value,
+        s.focus == 3,
+        app.editing && s.focus == 3,
+    );
+    ui::field(
+        frame,
+        rows[4],
+        "signing key",
+        &s.signing_key.value,
+        s.focus == 4,
+        app.editing && s.focus == 4,
+    );
+
+    let t = Theme::get();
+    let mut lines = vec![Line::from(ui::dim(
+        " recent savefiles  (h/l on the path field)",
+    ))];
+    if s.recent.is_empty() {
+        lines.push(Line::from(ui::dim("   none yet")));
+    }
+    for (i, p) in s.recent.iter().enumerate() {
+        let selected = s.focus == 0 && i == s.recent_sel;
+        lines.push(Line::from(Span::styled(
+            format!("   {} {}", if selected { ">" } else { " " }, p),
+            if selected { t.selected() } else { t.dimmed() },
+        )));
+    }
+    frame.render_widget(Paragraph::new(lines), recent);
+
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(ui::dim(
+                " a  analyse (read-only — the savefile is opened for reading and nothing is written)",
+            )),
+            Line::from(ui::dim(
+                " e  export the analysis to a new evidence container",
+            )),
+        ]),
+        hint,
+    );
+}
+
+fn results(frame: &mut Frame, area: Rect, app: &App) {
+    let t = Theme::get();
+    let s = &app.parse;
+    let Some(a) = &s.analysis else { return };
+
+    let [head, body] = Layout::vertical([Constraint::Length(2), Constraint::Min(3)]).areas(area);
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(vec![
+                ui::dim(" source  "),
+                Span::raw(ui::ellipsis(
+                    &a.source,
+                    (area.width as usize).saturating_sub(10),
+                )),
+            ]),
+            Line::from(vec![
+                ui::dim(" "),
+                Span::raw(format!(
+                    "{} packets · {} flows · {} indicators · {} decode errors",
+                    a.packets,
+                    a.flows.len(),
+                    a.indicators.len(),
+                    a.decode_errors
+                )),
+                ui::dim("   Esc back to the form"),
+            ]),
+        ]),
+        head,
+    );
+
+    // Side by side while both tables can hold their columns; stacked below that.
+    let split = body.width >= 120;
+    let (left, right) = if split {
+        let [l, r] = Layout::horizontal([Constraint::Ratio(1, 2); 2]).areas(body);
+        (l, Some(r))
+    } else {
+        (body, None)
+    };
+
+    match (right, s.pane) {
+        (Some(r), _) => {
+            flows(frame, left, app, s.pane == Pane::Flows);
+            indicators(frame, r, app, s.pane == Pane::Indicators);
+        }
+        (None, Pane::Flows) => flows(frame, left, app, true),
+        (None, Pane::Indicators) => indicators(frame, left, app, true),
+    }
+    let _ = t;
+}
+
+fn flows(frame: &mut Frame, area: Rect, app: &App, focused: bool) {
+    let t = Theme::get();
+    let a = app
+        .parse
+        .analysis
+        .as_ref()
+        .expect("results mode has analysis");
+    let w = area.width as usize;
+    let mut lines = vec![
+        Line::from(Span::styled(
+            format!(" reconstructed flows ({})", a.flows.len()),
+            if focused { t.selected() } else { t.dimmed() },
+        )),
+        Line::from(ui::dim(format!(
+            "  {:<21}{:<21}{:<5}{:>8}{:>10}",
+            "source", "destination", "prot", "packets", "stream"
+        ))),
+    ];
+    let rows = area.height.saturating_sub(2) as usize;
+    let start = window(app.parse.row, rows, a.flows.len(), focused);
+    for (i, f) in a.flows.iter().enumerate().skip(start).take(rows) {
+        let selected = focused && i == app.parse.row;
+        let text = format!(
+            "  {:<21}{:<21}{:<5}{:>8}{:>10}",
+            ui::ellipsis(&format!("{}:{}", f.src_addr, f.src_port), 20),
+            ui::ellipsis(&format!("{}:{}", f.dst_addr, f.dst_port), 20),
+            f.protocol,
+            f.packets,
+            f.reassembled_bytes
+        );
+        lines.push(Line::from(Span::styled(
+            ui::ellipsis(&text, w),
+            if selected {
+                t.selected()
+            } else {
+                ratatui::style::Style::new()
+            },
+        )));
+    }
+    more(&mut lines, start + rows, a.flows.len());
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+fn indicators(frame: &mut Frame, area: Rect, app: &App, focused: bool) {
+    let t = Theme::get();
+    let a = app
+        .parse
+        .analysis
+        .as_ref()
+        .expect("results mode has analysis");
+    let w = area.width as usize;
+    let mut lines = vec![
+        Line::from(Span::styled(
+            format!(" extracted indicators ({})", a.indicators.len()),
+            if focused { t.selected() } else { t.dimmed() },
+        )),
+        Line::from(ui::dim(format!(
+            "  {:<9}{:<34}{:>6}  {}",
+            "kind", "value", "count", "first seen"
+        ))),
+    ];
+    let rows = area.height.saturating_sub(2) as usize;
+    let start = window(app.parse.row, rows, a.indicators.len(), focused);
+    for (i, ind) in a.indicators.iter().enumerate().skip(start).take(rows) {
+        let selected = focused && i == app.parse.row;
+        let text = format!(
+            "  {:<9}{:<34}{:>6}  {}",
+            ui::ellipsis(&ind.kind, 8),
+            ui::ellipsis(&ind.value, 33),
+            ind.count,
+            ind.first_seen_utc
+        );
+        lines.push(Line::from(Span::styled(
+            ui::ellipsis(&text, w),
+            if selected {
+                t.selected()
+            } else {
+                ratatui::style::Style::new()
+            },
+        )));
+    }
+    more(&mut lines, start + rows, a.indicators.len());
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Keep the selected row on screen without scrolling an unfocused table.
+fn window(sel: usize, rows: usize, len: usize, focused: bool) -> usize {
+    if !focused || rows == 0 || len <= rows {
+        return 0;
+    }
+    sel.saturating_sub(rows - 1).min(len - rows)
+}
+
+/// Truncated tables say so. A table that silently ends is a table an analyst
+/// will read as complete.
+fn more(lines: &mut Vec<Line>, shown: usize, len: usize) {
+    if shown < len {
+        lines.push(Line::from(ui::dim(format!("  … {} more", len - shown))));
+    }
+}
