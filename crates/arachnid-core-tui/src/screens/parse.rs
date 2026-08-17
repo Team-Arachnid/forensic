@@ -222,3 +222,86 @@ pub fn finished(app: &mut App, result: Result<Done, String>) {
         Err(e) => app.toast(e, true),
     }
 }
+
+fn request_export(app: &mut App) {
+    if app.parse.analysis.is_none() {
+        app.toast("analyse a savefile first (Enter on the path, then a)", true);
+        return;
+    }
+    let out = app.parse.output.trimmed().to_string();
+    if out.is_empty() {
+        app.toast("output directory is required to export", true);
+        return;
+    }
+    app.ask(
+        format!("Write this analysis to a new evidence container at {out}?"),
+        Action::Export,
+    );
+}
+
+/// The container half of `arachnid-core parse-pcap`, on the analysis already in
+/// hand. The source file's digest is taken now, at export time, so the container
+/// binds the bytes as they are when the evidence is minted.
+pub fn export(app: &mut App) {
+    let Some(analysis) = app.parse.analysis.clone() else {
+        return;
+    };
+    let out = PathBuf::from(app.parse.output.trimmed());
+    let source = PathBuf::from(app.parse.input.trimmed());
+    let operator = match app.parse.operator.trimmed() {
+        "" => crate::app::default_operator(),
+        o => o.to_string(),
+    };
+    let signing_key = match app.parse.signing_key.trimmed() {
+        "" => None,
+        k => Some(PathBuf::from(k)),
+    };
+    if !app.begin("export") {
+        return;
+    }
+    let tx = app.tx.clone();
+    std::thread::spawn(move || {
+        let r = write_container(&out, &source, analysis, &operator, signing_key.as_deref())
+            .map(|p| p.display().to_string())
+            .map_err(|e| format!("{e:#}"));
+        let _ = tx.send(Msg::ExportDone(r));
+    });
+}
+
+fn write_container(
+    out: &Path,
+    source: &Path,
+    mut analysis: netcap::PcapAnalysis,
+    operator: &str,
+    signing_key: Option<&Path>,
+) -> Result<PathBuf> {
+    let key = signing_key
+        .map(arachnid_evidence::load_signing_key)
+        .transpose()?;
+    let mut container = Container::create(out, operator, key, false)?;
+    container.note(format!(
+        "invocation: arachnid-tui parse-pcap {} --output {}",
+        source.display(),
+        out.display()
+    ))?;
+
+    // The source file is evidence in its own right; bind its digest to this
+    // analysis even though the file stays where it is.
+    let (source_hash, size) = arachnid_evidence::sha256_file(source)?;
+    container.note(format!(
+        "source pcap {} sha256={source_hash} size={size}",
+        source.display()
+    ))?;
+    analysis.source_sha256 = Some(source_hash);
+
+    let mut report = Report::new(container.manifest().clone());
+    report.artifact(
+        "pcap_analysis.json",
+        container.add_json("pcap_analysis.json", &analysis)?,
+    );
+    report.pcap = Some(analysis);
+    seal_into(&mut container, &report).context("seal report into container")?;
+    let root = container.root().to_path_buf();
+    container.finish()?;
+    Ok(root)
+}
