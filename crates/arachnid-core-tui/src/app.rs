@@ -533,6 +533,110 @@ impl App {
         });
         true
     }
+
+    pub fn remember_pcap(&mut self, p: &Path) {
+        Saved::remember(&mut self.saved.recent_pcaps, &p.display().to_string());
+        self.saved.save();
+    }
+
+    pub fn remember_container(&mut self, p: &Path) {
+        let s = p.display().to_string();
+        Saved::remember(&mut self.saved.recent_containers, &s);
+        self.saved.last_container = Some(s);
+        self.saved.save();
+    }
+
+    pub fn goto(&mut self, screen: AppScreen) {
+        if self.screen == screen {
+            return;
+        }
+        self.back_to = self.screen;
+        self.screen = screen;
+        // Field focus does not survive a screen change; carrying an edit across
+        // screens would send keystrokes somewhere the operator is not looking.
+        self.editing = false;
+    }
+
+    fn cycle(&mut self, forward: bool) {
+        let here = TABS.iter().position(|&s| s == self.screen).unwrap_or(0);
+        let next = if forward {
+            (here + 1) % TABS.len()
+        } else {
+            (here + TABS.len() - 1) % TABS.len()
+        };
+        self.goto(TABS[next]);
+    }
+
+    // -- events -------------------------------------------------------------
+
+    pub fn on_key(&mut self, key: KeyEvent) {
+        // Overlays are modal, in the order they can appear on top of each other.
+        if self.confirm.is_some() {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    let c = self.confirm.take().expect("checked above");
+                    self.run_action(c.action);
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    self.confirm = None;
+                }
+                _ => {}
+            }
+            return;
+        }
+        if self.show_help {
+            self.show_help = false;
+            return;
+        }
+
+        // A field with the keyboard sees everything except the way out.
+        if self.editing {
+            if key.code == KeyCode::Esc || key.code == KeyCode::Enter {
+                self.editing = false;
+                return;
+            }
+            screens::on_key(self, key);
+            return;
+        }
+
+        if screens::on_key(self, key) {
+            return;
+        }
+
+        let Some(action) = global_for(&key) else {
+            return;
+        };
+        match action {
+            Global::Next => self.cycle(true),
+            Global::Prev => self.cycle(false),
+            Global::Jump => {
+                if let KeyCode::Char(c) = key.code {
+                    // `global_for` already restricted this to '1'..='6'.
+                    let i = (c as u8 - b'1') as usize;
+                    self.goto(TABS[i]);
+                }
+            }
+            Global::Help => self.show_help = true,
+            Global::Log => {
+                self.show_log = !self.show_log;
+                self.log_scroll = 0;
+            }
+            Global::Back => {
+                if self.toast.is_some() {
+                    self.toast = None;
+                } else if self.screen == AppScreen::Custody {
+                    let back = self.back_to;
+                    self.goto(back);
+                } else if self.screen != AppScreen::Dashboard {
+                    self.goto(AppScreen::Dashboard);
+                }
+            }
+            Global::Quit => match self.work_in_flight() {
+                Some(what) => self.ask(format!("{what}. Quit and lose it?"), Action::Quit),
+                None => self.quit = true,
+            },
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
