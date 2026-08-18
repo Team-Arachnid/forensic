@@ -637,6 +637,31 @@ impl App {
             },
         }
     }
+
+    pub fn ask(&mut self, prompt: impl Into<String>, action: Action) {
+        self.confirm = Some(Confirm {
+            prompt: prompt.into(),
+            action,
+        });
+    }
+
+    fn run_action(&mut self, action: Action) {
+        match action {
+            Action::Quit => {
+                if let Some(c) = &self.capture {
+                    // Set the flag rather than dropping the thread: the savefile
+                    // is flushed and its digest reaches the custody log. Losing a
+                    // capture to an abrupt exit is losing evidence.
+                    c.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                self.quit = true;
+            }
+            Action::StopCapture => screens::capture::stop(self),
+            Action::StartCollect => screens::collect::start(self),
+            Action::StartCapture => screens::capture::start(self),
+            Action::Export => screens::parse::export(self),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
