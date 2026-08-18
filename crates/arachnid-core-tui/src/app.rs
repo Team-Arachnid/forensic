@@ -662,6 +662,84 @@ impl App {
             Action::Export => screens::parse::export(self),
         }
     }
+
+    // -- background messages ------------------------------------------------
+
+    pub fn drain(&mut self) {
+        loop {
+            match self.rx.try_recv() {
+                Ok(msg) => self.handle(msg),
+                Err(TryRecvError::Empty) => break,
+                // The sender is cloned onto App, so this cannot happen while the
+                // app lives; treat it as "nothing more" rather than panicking.
+                Err(TryRecvError::Disconnected) => break,
+            }
+        }
+    }
+
+    fn handle(&mut self, msg: Msg) {
+        match msg {
+            Msg::Init(r) => {
+                self.capture_ui.adopt_devices(&r.devices);
+                self.init = Some(*r);
+            }
+            Msg::CollectStep(name) => self.collect.step(&name),
+            Msg::CollectDone(r) => {
+                self.busy = None;
+                screens::collect::finished(self, *r);
+            }
+            Msg::CaptureDone(r) => {
+                self.capture = None;
+                screens::capture::finished(self, *r);
+            }
+            Msg::ParseDone(r) => {
+                self.busy = None;
+                screens::parse::finished(self, *r);
+            }
+            Msg::ExportDone(r) => {
+                self.busy = None;
+                match r {
+                    Ok(path) => {
+                        self.remember_container(Path::new(&path));
+                        self.toast(format!("exported to {path}"), false);
+                    }
+                    Err(e) => self.toast(e, true),
+                }
+            }
+            Msg::VerifyDone(r) => {
+                self.busy = None;
+                screens::verify::finished(self, *r);
+            }
+            Msg::ReportDone(r) => {
+                self.busy = None;
+                screens::report::finished(self, *r);
+            }
+            Msg::CustodyDone(r) => {
+                self.busy = None;
+                screens::custody::finished(self, *r);
+            }
+            Msg::Toast(text, error) => self.toast(text, error),
+        }
+    }
+
+    pub fn tick(&mut self) {
+        self.frame = self.frame.wrapping_add(1);
+        // Toasts clear themselves; an error the operator has read should not sit
+        // over the screen forever, and Esc dismisses one early.
+        if self
+            .toast
+            .as_ref()
+            .is_some_and(|t| t.at.elapsed().as_secs() >= 6)
+        {
+            self.toast = None;
+        }
+    }
+
+    /// Frame of the two-cell spinner, for anything in progress.
+    pub fn spinner(&self) -> char {
+        const FRAMES: [char; 8] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'];
+        FRAMES[(self.frame / 2) as usize % FRAMES.len()]
+    }
 }
 
 // ---------------------------------------------------------------------------
