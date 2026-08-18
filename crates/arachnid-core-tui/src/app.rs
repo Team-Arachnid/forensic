@@ -783,3 +783,50 @@ fn privilege() -> (String, bool) {
 fn privilege() -> (String, bool) {
     ("unknown on this platform".into(), false)
 }
+
+// ---------------------------------------------------------------------------
+// Text input
+// ---------------------------------------------------------------------------
+
+/// A single-line text field. Append, backspace, clear — enough for a path, a BPF
+/// filter and an operator name, which is every field the TUI has.
+#[derive(Debug, Default, Clone)]
+pub struct Input {
+    pub value: String,
+}
+
+impl Input {
+    pub fn new(value: impl Into<String>) -> Self {
+        Input {
+            value: value.into(),
+        }
+    }
+
+    pub fn set(&mut self, value: impl Into<String>) {
+        self.value = value.into();
+    }
+
+    pub fn trimmed(&self) -> &str {
+        self.value.trim()
+    }
+
+    /// Returns true when the key was consumed.
+    pub fn key(&mut self, key: &KeyEvent) -> bool {
+        match key.code {
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.value.clear();
+                true
+            }
+            KeyCode::Char(c) => {
+                self.value.push(c);
+                true
+            }
+            KeyCode::Backspace => {
+                self.value.pop();
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
