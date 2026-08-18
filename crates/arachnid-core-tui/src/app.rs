@@ -830,3 +830,53 @@ impl Input {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every label the help overlay prints must resolve back to the action it
+    /// claims. This is the check that keeps the overlay honest.
+    #[test]
+    fn every_advertised_binding_dispatches() {
+        for b in GLOBAL {
+            assert!(!b.chords.is_empty(), "{} has no keys", b.label);
+            for c in b.chords {
+                let mods = if c.ctrl {
+                    KeyModifiers::CONTROL
+                } else {
+                    KeyModifiers::NONE
+                };
+                let ev = KeyEvent::new(c.code, mods);
+                assert_eq!(
+                    global_for(&ev),
+                    Some(b.action),
+                    "{} does not dispatch to its own action",
+                    b.label
+                );
+            }
+        }
+    }
+
+    /// `Jump` indexes [`TABS`] by subtracting `'1'`, so its keys and the tab
+    /// list have to stay the same length.
+    #[test]
+    fn jump_covers_exactly_the_tabs() {
+        let jump = GLOBAL
+            .iter()
+            .find(|b| b.action == Global::Jump)
+            .expect("a jump binding");
+        assert_eq!(jump.chords.len(), TABS.len());
+    }
+
+    #[test]
+    fn input_edits() {
+        let mut i = Input::default();
+        for c in "/tmp/x".chars() {
+            i.key(&KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        i.key(&KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert_eq!(i.trimmed(), "/tmp/");
+        i.key(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        assert_eq!(i.trimmed(), "");
+    }
+}
