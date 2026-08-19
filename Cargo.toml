@@ -7,6 +7,7 @@ members = [
     "crates/arachnid-netcap",
     "crates/arachnid-evidence",
     "crates/arachnid-report",
+    "crates/arachnid-sanitize-core",
 ]
 
 [workspace.package]
@@ -29,6 +30,7 @@ arachnid-collect = { path = "crates/arachnid-collect", version = "0.1.0" }
 arachnid-evidence = { path = "crates/arachnid-evidence", version = "0.1.0" }
 arachnid-netcap = { path = "crates/arachnid-netcap", version = "0.1.0" }
 arachnid-report = { path = "crates/arachnid-report", version = "0.1.0" }
+arachnid-sanitize-core = { path = "crates/arachnid-sanitize-core", version = "0.1.0" }
 
 # Single static binary per platform; see README "Build".
 [profile.release]
