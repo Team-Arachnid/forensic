@@ -7,6 +7,7 @@
 
 pub mod device;
 pub mod pattern;
+pub mod purge;
 pub mod rng;
 pub mod target;
 
