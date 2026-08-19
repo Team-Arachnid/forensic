@@ -68,11 +68,15 @@ code loading, self-persistence, packet injection or interception.
 | | Linux | Windows |
 |---|---|---|
 | Toolchain | Rust stable ≥ 1.82 | Rust stable ≥ 1.82, MSVC |
+| Toolchain (TUI only) | Rust stable ≥ 1.88 | Rust stable ≥ 1.88, MSVC |
 | Capture library | `libpcap-dev` / `libpcap-devel` | [Npcap](https://npcap.com/) + Npcap SDK |
 | Capture privilege | root, or `CAP_NET_RAW` | Npcap driver access |
 
 Collection works unprivileged; it just collects less, and says so in
 `warnings`. Only `capture` requires the capture library at runtime.
+
+`arachnid-core-tui` is the one crate above the workspace floor — ratatui 0.30
+needs 1.88. The engine crates and the CLI stay buildable on 1.82.
 
 ### Development build
 
@@ -433,7 +437,7 @@ rustup target add x86_64-pc-windows-msvc
 cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc
 ```
 
-The workspace is five crates, and `arachnid-evidence` is the foundation every
+The workspace is six crates, and `arachnid-evidence` is the foundation every
 other one depends on:
 
 | Crate | Responsibility |
@@ -443,6 +447,11 @@ other one depends on:
 | `arachnid-netcap` | Live capture, PCAP parsing, TCP reassembly, indicators |
 | `arachnid-report` | Schema-versioned JSON, Markdown and HTML summaries |
 | `arachnid-core-cli` | Argument parsing, orchestration, exit codes |
+| `arachnid-core-tui` | Terminal UI over the same library calls the CLI makes |
+
+The TUI is a view/controller layer with no engine logic of its own. Its own
+tests render every screen at every supported terminal size, so a layout that
+would panic and take the terminal with it fails in CI instead.
 
 Tests run unprivileged. Anything needing root — live capture, memory
 acquisition — is exercised on its refusal path in CI and belongs to a
