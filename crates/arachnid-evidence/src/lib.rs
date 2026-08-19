@@ -305,6 +305,25 @@ impl Container {
     }
 }
 
+/// One artifact's result, as [`verify`] found it.
+///
+/// The same evidence `problems` is built from, kept per-artifact so a front end
+/// can show a row per file instead of re-hashing the container itself. A second
+/// implementation of verification is exactly what a forensic tool must not have.
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtifactCheck {
+    pub name: String,
+    /// Digest as recorded in the custody log; `None` for a dry-run placeholder.
+    pub sha256: Option<String>,
+    pub size: Option<u64>,
+    /// When the artifact was logged, from its custody record.
+    pub logged_utc: Option<String>,
+    /// True when this artifact contributed no problem to the report.
+    pub ok: bool,
+    /// Why it is not `ok`, or a caveat when it is.
+    pub note: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct VerifyReport {
     pub container: String,
@@ -313,6 +332,9 @@ pub struct VerifyReport {
     pub key_fingerprint: String,
     pub records: u64,
     pub artifacts_checked: u64,
+    /// One row per artifact, in custody-log order, then anything on disk that
+    /// the log does not account for.
+    pub artifacts: Vec<ArtifactCheck>,
     pub problems: Vec<String>,
 }
 
@@ -359,6 +381,7 @@ pub fn verify(root: &Path) -> Result<VerifyReport> {
     let mut records = 0u64;
     let mut artifacts_checked = 0u64;
     let mut logged: Vec<String> = Vec::new();
+    let mut artifacts: Vec<ArtifactCheck> = Vec::new();
 
     let f = File::open(root.join("custody.log")).context("read custody.log")?;
     for (i, line) in BufReader::new(f).lines().enumerate() {
@@ -412,8 +435,19 @@ pub fn verify(root: &Path) -> Result<VerifyReport> {
                 continue;
             };
             logged.push(name.clone());
+            let mut row = ArtifactCheck {
+                name: name.clone(),
+                sha256: rec.sha256.clone(),
+                size: rec.size,
+                logged_utc: Some(rec.ts_utc.clone()),
+                ok: true,
+                note: None,
+            };
             let Some(want) = rec.sha256.as_deref() else {
-                continue; // dry-run placeholder; nothing was written
+                // dry-run placeholder; nothing was written
+                row.note = Some("no digest recorded (dry run)".into());
+                artifacts.push(row);
+                continue;
             };
             let path = root.join("artifacts").join(&name);
             match sha256_file(&path) {
@@ -423,13 +457,22 @@ pub fn verify(root: &Path) -> Result<VerifyReport> {
                         problems.push(format!(
                             "artifact {name}: content modified since collection"
                         ));
+                        row.ok = false;
+                        row.note = Some("content modified since collection".into());
                     }
                     if rec.size.is_some_and(|s| s != size) {
                         problems.push(format!("artifact {name}: size differs from record"));
+                        row.ok = false;
+                        row.note = Some(format!("size differs from record ({size} on disk)"));
                     }
                 }
-                Err(_) => problems.push(format!("artifact {name}: missing")),
+                Err(_) => {
+                    problems.push(format!("artifact {name}: missing"));
+                    row.ok = false;
+                    row.note = Some("missing".into());
+                }
             }
+            artifacts.push(row);
         }
     }
 
@@ -446,6 +489,14 @@ pub fn verify(root: &Path) -> Result<VerifyReport> {
                 problems.push(format!(
                     "artifact {rel}: present on disk but not in custody log"
                 ));
+                artifacts.push(ArtifactCheck {
+                    name: rel,
+                    sha256: None,
+                    size: fs::metadata(&entry).ok().map(|m| m.len()),
+                    logged_utc: None,
+                    ok: false,
+                    note: Some("present on disk but not in custody log".into()),
+                });
             }
         }
     }
@@ -457,8 +508,31 @@ pub fn verify(root: &Path) -> Result<VerifyReport> {
         public_key: manifest.public_key,
         records,
         artifacts_checked,
+        artifacts,
         problems,
     })
+}
+
+/// Read a container's custody records in order, without checking them.
+///
+/// For display only. Signatures and the hash chain are [`verify`]'s business; a
+/// front end that renders this must not imply the log has been validated.
+pub fn read_log(root: &Path) -> Result<Vec<Record>> {
+    let f = File::open(root.join("custody.log")).context("read custody.log")?;
+    let mut out = Vec::new();
+    for (i, line) in BufReader::new(f).lines().enumerate() {
+        let line = line?;
+        // Signature and separator are verify's concern; skip past them.
+        let body = match line.split_once(' ') {
+            Some((_, body)) => body,
+            None => bail!("custody.log line {}: no signature separator", i + 1),
+        };
+        out.push(
+            serde_json::from_str(body)
+                .with_context(|| format!("custody.log line {}: unparseable record", i + 1))?,
+        );
+    }
+    Ok(out)
 }
 
 fn walk(dir: &Path) -> Result<Vec<PathBuf>> {

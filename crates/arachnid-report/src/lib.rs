@@ -9,7 +9,7 @@ use std::fmt::Write as _;
 
 use anyhow::Result;
 use arachnid_collect::{Collection, MemoryAcquisition};
-use arachnid_evidence::Manifest;
+use arachnid_evidence::{Container, Manifest};
 use arachnid_netcap::{CaptureStats, PcapAnalysis};
 use serde::{Deserialize, Serialize};
 
@@ -68,6 +68,21 @@ impl Report {
     pub fn to_json(&self) -> Result<Vec<u8>> {
         Ok(serde_json::to_vec_pretty(self)?)
     }
+}
+
+/// Write the report into the container as JSON, Markdown and HTML, and return
+/// the JSON bytes.
+///
+/// Every front end goes through this, so the three renderings can never
+/// disagree and all three are covered by the same custody chain as the evidence
+/// they describe. `report.json` is written first because it is the contract; the
+/// other two are derived from the same in-memory report.
+pub fn seal_into(container: &mut Container, r: &Report) -> Result<Vec<u8>> {
+    let json = r.to_json()?;
+    container.add_bytes("report.json", &json)?;
+    container.add_bytes("report.md", to_markdown(r).as_bytes())?;
+    container.add_bytes("report.html", to_html(r).as_bytes())?;
+    Ok(json)
 }
 
 /// Top-N cutoff for the human summary. The JSON always holds everything; this

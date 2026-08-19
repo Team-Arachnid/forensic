@@ -1,0 +1,32 @@
+[package]
+name = "arachnid-core-tui"
+description = "Terminal UI front end for Arachnid Core: collect, capture, parse, verify, report."
+version.workspace = true
+edition.workspace = true
+# Above the workspace floor: ratatui 0.30 needs 1.88. Only this crate does; the
+# engine crates stay buildable on 1.82.
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "arachnid-tui"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+arachnid-collect.workspace = true
+arachnid-evidence.workspace = true
+arachnid-netcap.workspace = true
+arachnid-report.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+ratatui = "0.30.2"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
+[target.'cfg(windows)'.dependencies]
+# Only for the privilege status card: IsUserAnAdmin is the one-call form of the
+# CheckTokenMembership dance. Linux reads /proc/self/status and needs nothing.
+windows = { version = "0.62", features = ["Win32_UI_Shell"] }

@@ -15,6 +15,8 @@ arachnid-core capture     -o ./ev-net -d eth0 --duration 300 -f "not port 22"
 arachnid-core parse-pcap  suspicious.pcap -o ./ev-pcap
 arachnid-core verify      ./ev-host01                 # exit 0 = intact, 3 = tampered
 arachnid-core report      ./ev-host01 --format html -o triage.html
+
+arachnid-tui                                          # the same engine, driven from a TUI
 ```
 
 ---
@@ -24,6 +26,7 @@ arachnid-core report      ./ev-host01 --format html -o triage.html
 - [Design stance](#design-stance)
 - [Install and build](#install-and-build)
 - [Usage](#usage)
+- [Terminal UI](#terminal-ui)
 - [The evidence container](#the-evidence-container)
 - [Threat model](#threat-model)
 - [SOC allowlisting](#soc-allowlisting)
@@ -65,11 +68,15 @@ code loading, self-persistence, packet injection or interception.
 | | Linux | Windows |
 |---|---|---|
 | Toolchain | Rust stable ≥ 1.82 | Rust stable ≥ 1.82, MSVC |
+| Toolchain (TUI only) | Rust stable ≥ 1.88 | Rust stable ≥ 1.88, MSVC |
 | Capture library | `libpcap-dev` / `libpcap-devel` | [Npcap](https://npcap.com/) + Npcap SDK |
 | Capture privilege | root, or `CAP_NET_RAW` | Npcap driver access |
 
 Collection works unprivileged; it just collects less, and says so in
 `warnings`. Only `capture` requires the capture library at runtime.
+
+`arachnid-core-tui` is the one crate above the workspace floor — ratatui 0.30
+needs 1.88. The engine crates and the CLI stay buildable on 1.82.
 
 ### Development build
 
@@ -192,6 +199,104 @@ incomplete, and the report says exactly which collectors fell short.
 The operational log (`tracing`) is strictly separate from the evidence log. It
 goes to stderr, or to `--log <path>`. Verbosity comes from `--log-level`, which
 takes precedence over the `ARACHNID_LOG` environment variable.
+
+---
+
+## Terminal UI
+
+`arachnid-tui` is the second front end over the same engine. It drives the
+library crates directly — it never shells out to `arachnid-core`, and it can do
+nothing the CLI cannot. A container written by the TUI verifies with the CLI and
+validates against the same published schemas.
+
+```bash
+cargo run -p arachnid-core-tui     # or: arachnid-tui
+```
+
+On launch it shows the wordmark while it probes the host — effective privilege,
+whether a capture device is reachable — then drops into the dashboard. Failed
+probes become a warning banner, never a refusal to start: an unprivileged
+operator can still verify and report on a container collected elsewhere.
+
+```
+                       /\   /\
+                      (  o.o  )
+                        > ^ <
+               _.-'~~~~~~~~~~~~~~~'-._
+               .'                   '.
+               |      ARACHNID       |
+               |  F O R E N S I C S  |
+               '.___________________.'
+
+                  ⠋ checking host…
+              authorized DFIR use only
+```
+
+```
+ arachnid  1:Dashboard  2:Collect  3:Capture  4:Parse PCAP  5:Verify  6:Report
+╭ privilege ─────────────╮╭ packet capture ────────╮╭ evidence session ──────╮
+│root                    ││2 device(s)             ││./ev-host01             │
+│full collection availab.││eth0, lo                ││operator analyst-7@linux│
+│                        ││                        ││verified 8 artifacts    │
+╰────────────────────────╯╰────────────────────────╯╰────────────────────────╯
+ go to
+ > Collect     collect volatile system state
+   Capture     capture live network traffic
+   Parse PCAP  analyse an existing PCAP
+   Verify      verify an evidence container
+   Report      render a container's report
+ no startup warnings; every check passed
+ ? this help  ·  j/k move  ·  Enter open  ·  Tab next screen  ·  1-6 jump …
+```
+
+### Screens
+
+| # | Screen | What it does |
+|---|--------|--------------|
+| 1 | Dashboard | privilege, capture availability, current session, quick launch |
+| 2 | Collect | live per-collector checklist, then artifact counts and the key fingerprint |
+| 3 | Capture | device and BPF filter, running counters, post-capture flow breakdown |
+| 4 | Parse PCAP | read-only analysis first, export to a container second |
+| 5 | Verify | per-artifact hash status, overall verdict, collection vs. verify time |
+| 6 | Report | container contents by type, and export as JSON / Markdown / HTML |
+
+Verify and Report both open the **chain-of-custody** view (`c`): every record in
+order, with the selected one shown in full — complete digest, not a prefix.
+Nothing on that screen is summarized away.
+
+### Keys
+
+`?` lists every binding, generated from the same keymap table that dispatches
+them. Globally: `Tab`/`Shift-Tab` or `1`-`6` to move between screens, `Ctrl-L`
+for the operational log pane, `Esc` to back out, `q` to quit. Within a screen,
+`j`/`k` move, `Enter` edits a field or drills in.
+
+Fields have an explicit edit mode so a path containing `q` can be typed: `Enter`
+enters the field, `Esc` or `Enter` leaves it.
+
+Anything that starts, replaces or stops evidence collection asks first — quitting
+during a capture included, and confirming there sets the stop flag so the
+savefile is flushed and sealed rather than lost.
+
+### Behaviour worth knowing
+
+- **Capture keeps running while you navigate.** It is a background thread; the
+  header shows `[capturing]` from every screen.
+- **Live capture figures are counters only.** Decoding frames to fill a packet
+  table would put per-frame work in the capture loop, which is how a capture
+  falls behind the link and drops evidence. The flow and protocol breakdown come
+  from a read-only re-read of the savefile once it is closed and sealed.
+- **`NO_COLOR` is respected**, and every verdict is stated in text as well as
+  colour, so nothing is lost in a monochrome terminal.
+- **Layout degrades rather than breaks** down to 32x8: the tab strip collapses
+  to a position indicator, cards lose their borders, tables truncate with a
+  `… n more` marker.
+- A panic hook restores the terminal — raw mode off, alternate screen left —
+  before the panic prints, so a crash cannot leave the shell unusable.
+
+The TUI remembers the operator name and recent paths in
+`$XDG_STATE_HOME/arachnid/tui-state.json` (`%APPDATA%` on Windows). That file is
+a convenience, never evidence; deleting it costs two retyped paths.
 
 ---
 
@@ -332,7 +437,7 @@ rustup target add x86_64-pc-windows-msvc
 cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc
 ```
 
-The workspace is five crates, and `arachnid-evidence` is the foundation every
+The workspace is six crates, and `arachnid-evidence` is the foundation every
 other one depends on:
 
 | Crate | Responsibility |
@@ -342,6 +447,11 @@ other one depends on:
 | `arachnid-netcap` | Live capture, PCAP parsing, TCP reassembly, indicators |
 | `arachnid-report` | Schema-versioned JSON, Markdown and HTML summaries |
 | `arachnid-core-cli` | Argument parsing, orchestration, exit codes |
+| `arachnid-core-tui` | Terminal UI over the same library calls the CLI makes |
+
+The TUI is a view/controller layer with no engine logic of its own. Its own
+tests render every screen at every supported terminal size, so a layout that
+would panic and take the terminal with it fails in CI instead.
 
 Tests run unprivileged. Anything needing root — live capture, memory
 acquisition — is exercised on its refusal path in CI and belongs to a
