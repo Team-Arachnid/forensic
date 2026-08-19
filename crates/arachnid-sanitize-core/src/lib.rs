@@ -8,6 +8,7 @@
 pub mod device;
 pub mod pattern;
 pub mod rng;
+pub mod target;
 
 pub use device::{BusType, Device};
 pub use pattern::WipeMethod;
