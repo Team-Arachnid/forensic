@@ -6,6 +6,7 @@
 //! why the safety rails in this crate are structural rather than advisory.
 
 pub mod device;
+pub mod engine;
 pub mod pattern;
 pub mod purge;
 pub mod rng;
