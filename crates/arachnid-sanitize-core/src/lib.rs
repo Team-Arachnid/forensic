@@ -5,7 +5,9 @@
 //! every code path here exists to make a device unreadable. That inversion is
 //! why the safety rails in this crate are structural rather than advisory.
 
+pub mod device;
 pub mod pattern;
 pub mod rng;
 
+pub use device::{BusType, Device};
 pub use pattern::WipeMethod;
