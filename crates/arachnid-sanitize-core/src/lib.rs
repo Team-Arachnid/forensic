@@ -9,7 +9,9 @@ pub mod device;
 pub mod pattern;
 pub mod purge;
 pub mod rng;
+pub mod safety;
 pub mod target;
 
 pub use device::{BusType, Device};
 pub use pattern::WipeMethod;
+pub use safety::{Clearance, Refusal, WipeRequest};
