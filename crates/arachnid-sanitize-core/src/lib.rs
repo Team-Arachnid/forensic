@@ -12,6 +12,7 @@ pub mod purge;
 pub mod rng;
 pub mod safety;
 pub mod target;
+pub mod verify;
 
 pub use device::{BusType, Device};
 pub use pattern::WipeMethod;
