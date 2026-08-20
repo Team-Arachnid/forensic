@@ -170,6 +170,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "arachnid-sanitize-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arachnid-evidence",
+ "arachnid-sanitize-core",
+ "clap",
+ "ctrlc",
+ "ed25519-dalek",
+ "getrandom 0.4.3",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "arachnid-sanitize-core"
 version = "0.1.0"
 dependencies = [

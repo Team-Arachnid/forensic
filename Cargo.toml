@@ -8,6 +8,7 @@ members = [
     "crates/arachnid-evidence",
     "crates/arachnid-report",
     "crates/arachnid-sanitize-core",
+    "crates/arachnid-sanitize-cli",
 ]
 
 [workspace.package]
