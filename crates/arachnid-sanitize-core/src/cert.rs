@@ -193,6 +193,24 @@ pub fn issue(
     })
 }
 
+/// A signing key for this run alone.
+///
+/// A certificate signed with one can only ever be checked against the
+/// fingerprint printed when it was issued, so every front end that calls this
+/// has to show that fingerprint rather than log it. Preferred over each front
+/// end rolling its own so the CLI and the TUI cannot drift on key handling.
+pub fn ephemeral_key() -> Result<SigningKey> {
+    let mut seed = [0u8; 32];
+    getrandom::fill(&mut seed).context("gather entropy for an ephemeral signing key")?;
+    Ok(SigningKey::from_bytes(&seed))
+}
+
+/// Hex SHA-256 of a key's public half: the value an operator records
+/// out-of-band so a certificate can be trusted later.
+pub fn key_fingerprint(key: &SigningKey) -> String {
+    arachnid_evidence::sha256(key.verifying_key().as_bytes())
+}
+
 /// The sentence an auditor reads to know what standard was actually met.
 fn method_detail(outcome: &WipeOutcome) -> String {
     use crate::purge::PurgeOutcome;

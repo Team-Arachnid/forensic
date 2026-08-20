@@ -424,7 +424,7 @@ fn cmd_wipe(cli: &Cli, a: &WipeArgs) -> Result<u8> {
                     "Certificate appended to {}\nSigning key fingerprint: {}\nRecord this \
                      fingerprint out-of-band; verification proves origin only against it.",
                     register.display(),
-                    arachnid_evidence::sha256(key.verifying_key().as_bytes())
+                    cert::key_fingerprint(&key)
                 );
             }
             Ok(exit::OK)
@@ -675,11 +675,7 @@ fn read_certificates(register: &Path) -> Result<Vec<cert::Certificate>> {
 fn load_or_generate_key(path: Option<&Path>) -> Result<SigningKey> {
     match path {
         Some(p) => arachnid_evidence::load_signing_key(p),
-        None => {
-            let mut seed = [0u8; 32];
-            getrandom::fill(&mut seed).context("gather entropy for an ephemeral signing key")?;
-            Ok(SigningKey::from_bytes(&seed))
-        }
+        None => cert::ephemeral_key(),
     }
 }
 

@@ -10,6 +10,7 @@ pub mod custody;
 pub mod dashboard;
 pub mod parse;
 pub mod report;
+pub mod sanitize;
 pub mod verify;
 
 use ratatui::crossterm::event::KeyEvent;
@@ -28,6 +29,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
         AppScreen::Parse => parse::render(frame, area, app),
         AppScreen::Verify => verify::render(frame, area, app),
         AppScreen::Report => report::render(frame, area, app),
+        AppScreen::Sanitize => sanitize::render(frame, area, app),
         AppScreen::Custody => custody::render(frame, area, app),
     }
 }
@@ -43,6 +45,7 @@ pub fn on_key(app: &mut App, key: KeyEvent) -> bool {
         AppScreen::Parse => parse::on_key(app, key),
         AppScreen::Verify => verify::on_key(app, key),
         AppScreen::Report => report::on_key(app, key),
+        AppScreen::Sanitize => sanitize::on_key(app, key),
         AppScreen::Custody => custody::on_key(app, key),
     }
 }
@@ -57,6 +60,7 @@ pub fn keys(screen: AppScreen) -> &'static [(&'static str, &'static str)] {
         AppScreen::Parse => parse::KEYS,
         AppScreen::Verify => verify::KEYS,
         AppScreen::Report => report::KEYS,
+        AppScreen::Sanitize => sanitize::KEYS,
         AppScreen::Custody => custody::KEYS,
     }
 }

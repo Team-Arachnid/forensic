@@ -14,12 +14,16 @@ use crate::ui::{self, Theme};
 pub const KEYS: &[(&str, &str)] = &[("j/k", "move"), ("Enter", "open")];
 
 /// Quick-launch tiles, in the order they appear.
-const TILES: [(AppScreen, &str); 5] = [
+const TILES: [(AppScreen, &str); 6] = [
     (AppScreen::Collect, "collect volatile system state"),
     (AppScreen::Capture, "capture live network traffic"),
     (AppScreen::Parse, "analyse an existing PCAP"),
     (AppScreen::Verify, "verify an evidence container"),
     (AppScreen::Report, "render a container's report"),
+    (
+        AppScreen::Sanitize,
+        "securely erase a device — destroys data",
+    ),
 ];
 
 #[derive(Default)]
@@ -48,10 +52,10 @@ pub fn on_key(app: &mut App, key: KeyEvent) -> bool {
 pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     let t = Theme::get();
 
-    // Below 100 columns three cards side by side leave no room for their values.
+    // Below 132 columns four cards side by side leave no room for their values.
     // Narrow terminals drop the boxes entirely rather than shrink them: borders
     // cost six rows that the content needs more.
-    let boxed = area.width >= 100;
+    let boxed = area.width >= 132;
     let cards = status_cards(app, area.width as usize);
     let card_h = if boxed {
         cards.iter().map(|(_, l)| l.len()).max().unwrap_or(1) as u16 + 2
@@ -67,7 +71,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     .areas(area);
 
     if boxed {
-        let boxes: [Rect; 3] = Layout::horizontal([Constraint::Ratio(1, 3); 3]).areas(head);
+        let boxes: [Rect; 4] = Layout::horizontal([Constraint::Ratio(1, 4); 4]).areas(head);
         for (slot, (title, lines)) in boxes.into_iter().zip(cards) {
             ui::card(frame, slot, title, lines);
         }
@@ -124,9 +128,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(Paragraph::new(wl).wrap(Wrap { trim: true }), warns);
 }
 
-/// The three status cards, as (title, body). Built once and then either boxed
+/// The four status cards, as (title, body). Built once and then either boxed
 /// or listed, so the two layouts can never say different things.
-fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>); 3] {
+fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>); 4] {
     let t = Theme::get();
 
     let privilege = match &app.init {
@@ -179,9 +183,62 @@ fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>);
         None => Line::from(ui::dim("last verify: none this session")),
     });
 
+    // Sanitize is the one module here that destroys data, so its card states
+    // what is running even when that is "nothing" — an operator should never
+    // have to open the screen to find out whether a wipe is in flight.
+    let sanitize = match &app.sanitize_job {
+        Some(j) => {
+            let p = &j.progress;
+            let pass = p.pass.load(std::sync::atomic::Ordering::Relaxed);
+            let passes = p.passes_total.load(std::sync::atomic::Ordering::Relaxed);
+            vec![
+                Line::styled(
+                    if j.dry_run {
+                        "dry run in progress".to_string()
+                    } else {
+                        "1 wipe in progress".to_string()
+                    },
+                    if j.dry_run {
+                        t.verdict(true)
+                    } else {
+                        Style::new().fg(t.bad).add_modifier(Modifier::BOLD)
+                    },
+                ),
+                Line::from(ui::dim(ui::ellipsis(&j.device, width / 4))),
+                Line::from(ui::dim(format!(
+                    "pass {pass}/{passes}  {:.1}%",
+                    p.fraction() * 100.0
+                ))),
+            ]
+        }
+        None => {
+            let devices = app.sanitize.devices.len();
+            let system = app.sanitize.devices.iter().filter(|d| d.is_system).count();
+            vec![
+                Line::from(ui::dim("no wipe running")),
+                Line::from(ui::dim(if devices == 0 {
+                    "no devices enumerated".to_string()
+                } else {
+                    format!("{devices} device(s), {system} system-hosting")
+                })),
+                match &app.sanitize.last {
+                    Some(d) => Line::styled(
+                        match &d.certificate {
+                            Some(_) => "last: certified".to_string(),
+                            None => "last: not certified".to_string(),
+                        },
+                        t.verdict(d.certificate.is_some()),
+                    ),
+                    None => Line::from(ui::dim("none this session")),
+                },
+            ]
+        }
+    };
+
     [
         ("privilege", privilege),
         ("packet capture", capture),
         ("evidence session", session),
+        ("sanitize", sanitize),
     ]
 }

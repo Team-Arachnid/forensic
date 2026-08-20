@@ -22,5 +22,4 @@ tracing.workspace = true
 clap = { version = "4.6", features = ["derive"] }
 ctrlc = "3.5"
 ed25519-dalek = "3.0"
-getrandom = "0.4"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
