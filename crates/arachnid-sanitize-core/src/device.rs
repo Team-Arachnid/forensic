@@ -62,6 +62,11 @@ pub struct Device {
 
 impl Device {
     pub fn size_human(&self) -> String {
+        if self.size_bytes == 0 {
+            // Enumeration lists a device whose size it could not read rather
+            // than hiding it; see the Windows enumerate().
+            return "unknown".into();
+        }
         human_bytes(self.size_bytes)
     }
 
@@ -142,6 +147,17 @@ pub mod windows {
             .with_context(|| format!("open {path} for query"))
     }
 
+    /// Reopen with read access, for the ioctls that will not accept a
+    /// zero-access handle. Fails for an unprivileged operator, which is why
+    /// nothing that calls this may treat the failure as "no such device".
+    fn open_for_read(path: &str) -> Result<File> {
+        OpenOptions::new()
+            .read(true)
+            .share_mode(0x01 | 0x02)
+            .open(path)
+            .with_context(|| format!("open {path} for read"))
+    }
+
     fn handle(file: &File) -> HANDLE {
         HANDLE(file.as_raw_handle())
     }
@@ -215,7 +231,7 @@ pub mod windows {
             (false, false) => format!("{vendor} {product}"),
         };
 
-        let bus = match d.BusType {
+        let mut bus = match d.BusType {
             b if b == BusTypeNvme => BusType::Nvme,
             b if b == BusTypeSata || b == BusTypeAta || b == BusTypeAtapi => BusType::Sata,
             b if b == BusTypeUsb => BusType::Usb,
@@ -224,6 +240,17 @@ pub mod windows {
             b if b == BusTypeVirtual || b == BusTypeFileBackedVirtual => BusType::Virtual,
             _ => BusType::Unknown,
         };
+        // StorNVMe presents NVMe drives through StorPort, so the descriptor
+        // frequently reports SCSI or RAID for what is really an NVMe device.
+        // The bus decides which hardware purge command gets named on a
+        // certificate, so correct it off the model string, which Microsoft's
+        // driver prefixes with "NVMe". Only ever narrows SCSI/RAID/unknown --
+        // it never overrides a bus the descriptor stated positively.
+        if matches!(bus, BusType::Scsi | BusType::Unknown)
+            && model.to_ascii_uppercase().starts_with("NVME")
+        {
+            bus = BusType::Nvme;
+        }
 
         Ok((model, at(d.SerialNumberOffset), bus, d.RemovableMedia))
     }
@@ -347,13 +374,23 @@ pub mod windows {
             let Ok(file) = open_for_query(&path) else {
                 continue;
             };
-            let size = match drive_size(&file) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!(device = %path, error = %format!("{e:#}"), "skipping: size query failed");
-                    continue;
-                }
-            };
+            // IOCTL_DISK_GET_LENGTH_INFO needs read access, which an
+            // unprivileged operator does not have on a physical drive. Falling
+            // back to a read handle keeps the listing complete for an
+            // Administrator; failing that, the device is still listed with an
+            // unknown size, because "you need to elevate" is a far more useful
+            // answer than an empty device list. A zero size is refused by
+            // `safety::authorize`, so an unsized device cannot be wiped.
+            let size = drive_size(&file)
+                .or_else(|_| open_for_read(&path).and_then(|f| drive_size(&f)))
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        device = %path,
+                        error = %format!("{e:#}"),
+                        "size unavailable; listing the device without it (elevation required)"
+                    );
+                    0
+                });
             let (model, serial, bus, removable) = descriptor(&file).unwrap_or_else(|e| {
                 tracing::warn!(device = %path, error = %format!("{e:#}"), "storage descriptor unavailable");
                 ("unknown".into(), String::new(), BusType::Unknown, false)
