@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Certificate of Data Erasure</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:52rem;margin:3rem auto;padding:0 1.5rem;line-height:1.6;color:#111}
+h1{border-bottom:3px solid #111;padding-bottom:.4rem}
+table{border-collapse:collapse;width:100%;margin:1rem 0}
+td,th{border:1px solid #ccc;padding:.45rem .7rem;text-align:left}
+th{background:#f4f4f4}
+code{background:#f4f4f4;padding:.1rem .3rem;border-radius:3px;word-break:break-all}
+blockquote{border-left:4px solid #b00;background:#fff4f4;margin:1rem 0;padding:.6rem 1rem}
+</style>
+</head>
+<body>
+<h1>Certificate of Data Erasure</h1>
+<p><strong>Certificate ID:</strong> <code>ccf8c85e2d552faf44ba1042e91a01bd</code></p>
+<p>Issued by arachnid-sanitize 0.1.0 on forensics-lab-01 (windows/x86_64).</p>
+<h2>Device</h2>
+<table>
+<tr><td>Field</td><td>Value</td></tr>
+<tr><td>Model</td><td>SAMSUNG MZ7LH480HAHQ-00005</td></tr>
+<tr><td>Serial number</td><td><code>S4EVNF0M123456</code></td></tr>
+<tr><td>Capacity</td><td>4.0 MiB (4194304 bytes)</td></tr>
+<tr><td>Interface</td><td>SATA</td></tr>
+<tr><td>Removable</td><td>no</td></tr>
+<tr><td>OS path at wipe time</td><td><code>/dev/sdb</code></td></tr>
+</table>
+<h2>Erasure</h2>
+<table>
+<tr><td>Field</td><td>Value</td></tr>
+<tr><td>Method requested</td><td>DoD 5220.22-M (3-pass)</td></tr>
+<tr><td>What actually ran</td><td>software overwrite, 3 pass(es), written and verified</td></tr>
+<tr><td>Passes</td><td>3</td></tr>
+<tr><td>Started (UTC)</td><td>2026-08-28T08:49:51.9805502Z</td></tr>
+<tr><td>Finished (UTC)</td><td>2026-08-28T08:49:52.0275373Z</td></tr>
+<tr><td>Duration</td><td>0.0 s</td></tr>
+<tr><td>Bytes written</td><td>12.0 MiB</td></tr>
+</table>
+<h3>Pass sequence</h3>
+<p>1. fixed 0x00</p>
+<p>2. fixed 0xFF</p>
+<p>3. random seed fca94b482e284dbf9d135dfe53d4d77b5857b59e6e033bb4d10ca40d8f5c5129</p>
+<p>A random pass is generated from the seed recorded above, so its content can be recomputed and independently re-checked at any offset.</p>
+<h2>Verification</h2>
+<p><strong>PASSED</strong> — 34 region(s) sampled, 1.5 MiB read back (37.5000% of the device), every sampled byte matched the expected pattern.</p>
+<h2>Attestation</h2>
+<p><strong>Operator:</strong> analyst@forensics-lab</p>
+<p><strong>Signing key (Ed25519):</strong> <code>d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a</code></p>
+<p><strong>Previous register entry:</strong> <code>0000000000000000000000000000000000000000000000000000000000000000</code></p>
+<p>This certificate is signed and chained into an append-only register. Verify it with <code>arachnid-sanitize cert --verify</code>. The signature proves the certificate has not been altered; it proves origin only against a key fingerprint recorded out of band.</p>
+</body>
+</html>

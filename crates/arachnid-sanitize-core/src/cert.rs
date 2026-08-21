@@ -453,7 +453,7 @@ pub fn to_markdown(c: &Certificate) -> String {
     s.push_str(&format!("**Previous register entry:** `{}`\n\n", c.prev));
     s.push_str(
         "This certificate is signed and chained into an append-only register. Verify it with \
-         `arachnid-sanitize verify-cert`. The signature proves the certificate has not been \
+         `arachnid-sanitize cert --verify`. The signature proves the certificate has not been \
          altered; it proves origin only against a key fingerprint recorded out of band.\n",
     );
     s

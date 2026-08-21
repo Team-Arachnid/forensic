@@ -31,3 +31,6 @@ windows = { version = "0.62", features = [
 
 [dev-dependencies]
 tempfile = "3.15"
+# The sample-certificate fixture signs with a fixed key so the checked-in
+# sample is stable across regenerations; see tests/fixture.rs.
+ed25519-dalek = "3.0"
