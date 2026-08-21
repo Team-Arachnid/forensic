@@ -19,6 +19,16 @@ arachnid-core report      ./ev-host01 --format html -o triage.html
 arachnid-tui                                          # the same engine, driven from a TUI
 ```
 
+The suite also ships **Arachnid Sanitize**, the secure erasure module. Unlike
+everything above, it *destroys* data — see [Secure erasure](#secure-erasure).
+
+```
+arachnid-sanitize list-devices                        # flags the disk hosting the running OS
+arachnid-sanitize wipe /dev/sdb --method nist-clear --dry-run
+arachnid-sanitize wipe /dev/sdb --method dod3 --confirm-serial S4EVNF0M123456
+arachnid-sanitize cert --verify                       # check the certificate register
+```
+
 ---
 
 ## Contents
@@ -28,6 +38,7 @@ arachnid-tui                                          # the same engine, driven 
 - [Usage](#usage)
 - [Terminal UI](#terminal-ui)
 - [The evidence container](#the-evidence-container)
+- [Secure erasure](#secure-erasure)
 - [Threat model](#threat-model)
 - [SOC allowlisting](#soc-allowlisting)
 - [Output schema](#output-schema)
@@ -245,8 +256,9 @@ operator can still verify and report on a container collected elsewhere.
    Parse PCAP  analyse an existing PCAP
    Verify      verify an evidence container
    Report      render a container's report
+   Sanitize    securely erase a device — destroys data
  no startup warnings; every check passed
- ? this help  ·  j/k move  ·  Enter open  ·  Tab next screen  ·  1-6 jump …
+ ? this help  ·  j/k move  ·  Enter open  ·  Tab next screen  ·  1-7 jump …
 ```
 
 ### Screens
@@ -259,6 +271,7 @@ operator can still verify and report on a container collected elsewhere.
 | 4 | Parse PCAP | read-only analysis first, export to a container second |
 | 5 | Verify | per-artifact hash status, overall verdict, collection vs. verify time |
 | 6 | Report | container contents by type, and export as JSON / Markdown / HTML |
+| 7 | Sanitize | device list, method choice, gated confirm, live wipe progress, certificate |
 
 Verify and Report both open the **chain-of-custody** view (`c`): every record in
 order, with the selected one shown in full — complete digest, not a prefix.
@@ -267,7 +280,7 @@ Nothing on that screen is summarized away.
 ### Keys
 
 `?` lists every binding, generated from the same keymap table that dispatches
-them. Globally: `Tab`/`Shift-Tab` or `1`-`6` to move between screens, `Ctrl-L`
+them. Globally: `Tab`/`Shift-Tab` or `1`-`7` to move between screens, `Ctrl-L`
 for the operational log pane, `Esc` to back out, `q` to quit. Within a screen,
 `j`/`k` move, `Enter` edits a field or drills in.
 
@@ -281,7 +294,13 @@ savefile is flushed and sealed rather than lost.
 ### Behaviour worth knowing
 
 - **Capture keeps running while you navigate.** It is a background thread; the
-  header shows `[capturing]` from every screen.
+  header shows `[capturing]` from every screen. A running **wipe** behaves the
+  same way — a multi-pass erase of a large disk runs for hours, and pinning the
+  operator to one screen for that long is not a real workflow.
+- **The Sanitize confirm screen is deliberately not the normal confirm.**
+  Different border, different colour, an explicit `IRREVERSIBLE DATA
+  DESTRUCTION` banner, a typed serial, and a commit key that is *not* `y` or
+  `Enter` — precisely because those are what the ordinary dialog takes.
 - **Live capture figures are counters only.** Decoding frames to fill a packet
   table would put per-frame work in the capture loop, which is how a capture
   falls behind the link and drops evidence. The flow and protocol breakdown come
@@ -332,6 +351,127 @@ correctness question.
 Every record carries both a UTC wall-clock timestamp and a monotonic offset from
 container creation. Wall clock is what an analyst reads; the monotonic clock is
 what preserves ordering when the examined host's clock steps mid-collection.
+
+---
+
+## Secure erasure
+
+**Arachnid Sanitize** (`arachnid-sanitize`, and the Sanitize screen in the TUI)
+performs standards-compliant destruction of data on storage media, verifies the
+result by read-back, and issues a signed certificate.
+
+> Every other tool in this suite is read-only against the target. **This one is
+> not.** A wipe cannot be undone. Use `--dry-run` first, every time.
+
+### Compliance mapping
+
+| Method | Flag | Passes | Satisfies | Use it when |
+|---|---|---|---|---|
+| NIST SP 800-88 *Clear* | `--method nist-clear` | 1 (`0x00`) | NIST 800-88 Clear | Media stays inside the organization. Defeats every software recovery tool; not laboratory attack. |
+| NIST SP 800-88 *Purge* | `--method nist-purge` | hardware, else 3 | See caveat below | Media leaves the organization. **Read the caveat.** |
+| DoD 5220.22-M | `--method dod3` | 3 (`0x00`, `0xFF`, random) | DoD 5220.22-M (short) | A policy names DoD 3-pass explicitly. |
+| DoD 5220.22-M ECE | `--method dod7` | 7 | DoD 5220.22-M (full) | A policy names DoD 7-pass explicitly. |
+| Crypto-erase | `--method crypto-erase` | 0 | — | **Refused in this build.** See below. |
+
+DoD 5220.22-M never fixed byte values itself — it specified "a character, its
+complement, and a random pattern". The byte values here follow the convention
+Eraser and DBAN ship under that name, which is what an auditor reading a
+certificate will recognise. The exact sequences are asserted byte-for-byte in
+`crates/arachnid-sanitize-core/tests/safety_rails.rs`.
+
+On modern SSDs, wear levelling means an overwrite cannot guarantee every
+physical cell holding old data is reached. That is a property of the media, not
+of this tool: for flash, a hardware purge or crypto-erase is the only complete
+answer, and neither is available in this build. Plan accordingly.
+
+### Two honest caveats
+
+**This build issues no hardware sanitize command.** `--method nist-purge`
+probes the device, reports which command *would* apply, then runs a 3-pass
+software overwrite instead — and the certificate says so, in those words:
+
+> SOFTWARE OVERWRITE, not a hardware purge — … Assess against NIST 800-88
+> Clear, not Purge.
+
+ATA `SECURITY ERASE UNIT`, ATA `SANITIZE` and NVMe `FORMAT NVM` (SES=1) all
+need vendor-quirk-laden pass-through I/O where a malformed command can leave a
+drive frozen or password-locked and needing a vendor tool to recover. Shipping
+a half-tested version of that is worse than not shipping it. A test asserts no
+code path can claim a completed hardware purge, so this cannot quietly regress
+into an unearned compliance claim.
+
+**Crypto-erase is refused on every device.** Confirming a drive is a working
+self-encrypting drive means reading its TCG Opal feature set over that same
+pass-through path. Claiming a crypto-erase we cannot verify is the most
+dangerous false statement this tool could make: the operator believes the data
+is gone when it is not.
+
+### Safety rails
+
+The rails are structural, not advisory. `engine::wipe` accepts only a
+`Clearance`, and the only way to construct one is `safety::authorize`, which
+runs every check below. A new subcommand, screen or batch runner therefore
+*cannot* reach the write path without passing them — there is no other way to
+build the token it needs.
+
+| Rail | Behaviour |
+|---|---|
+| **System-volume block** | A device hosting the running OS is refused. Override needs `--force-system-volume` (CLI) or `f` plus the distinct confirm screen (TUI), and the override is recorded on the certificate. |
+| **Typed serial** | `--confirm-serial` must match the device exactly, case-sensitively. Folding case would let `abc123` confirm a wipe of the drive labelled `ABC123`, and hosts exist with both. |
+| **No serial, no wipe** | A device reporting no serial is refused outright: the typed-serial rail has nothing to protect the wipe with. Common on USB bridges. |
+| **Re-enumeration** | Devices are re-read immediately before authorizing and matched on model + serial + size. Catches a drive unplugged mid-session whose path was reused by another. |
+| **Dry run** | `--dry-run` walks device selection, method choice and reporting, and writes zero bytes. Asserted by test, not by inspection. |
+| **No bulk select** | There is no verb that takes more than one device. `Clearance` is not `Clone`, so one cannot be carried to a second drive. |
+| **Cooldown** | A 3-second countdown precedes the first write. In the TUI the commit key is *rejected*, not merely ignored, until it elapses. |
+
+`is_system` is computed by asking the OS which physical disks back the mounted
+system volumes — `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` per drive letter on
+Windows, `/proc/mounts` resolved through partitions and device-mapper slaves on
+Linux — never guessed from a device path or drive number. **If that
+cross-reference fails, every disk is reported as system-hosting.** For a
+destructive tool, "unsure" and "yes" have to mean the same thing.
+
+### Verification
+
+After a wipe, Sanitize reads back the head and tail in full (64 MiB each by
+default, where partition tables, superblocks and journals live) plus 256 spread
+samples, and compares **exactly**.
+
+Random passes are generated from a recorded 32-byte seed, so the expected bytes
+at any offset can be recomputed — which makes a "random" pass verifiable by
+byte-for-byte match rather than by entropy estimate. An entropy check cannot
+tell a wiped disk from an encrypted one that was never touched.
+
+A failed verification, a cancelled wipe, a dry run, or any unwritable region
+**blocks certificate issuance**. That rule lives in `cert::issue`, not in the
+callers, so no code path can produce a signed certificate for a device that
+might still hold data.
+
+### Certificates
+
+Issued on success as JSON, Markdown and standalone HTML (no external assets —
+an auditor opening it in five years should not need a CDN to still exist).
+Sample: [`schema/samples/`](schema/samples/), generated by a test so it cannot
+drift from real output.
+
+Certificates are Ed25519-signed and appended to `certificates.log`, a hash-
+chained append-only register using the same construction as the evidence
+container's custody log: removing an entry breaks the chain, editing one breaks
+its signature. Check it with `arachnid-sanitize cert --verify`.
+
+### Exit codes
+
+`0` success · `1` runtime error · `2` usage · `3` refused by a rail, **nothing
+written** · `4` wipe ran but verification failed · `5` completed with
+unwritable regions. Disposal scripts can distinguish "we did not touch it" from
+"we touched it and it did not verify".
+
+### Not in scope
+
+No network or remote wipe triggering. No unattended scheduling — every wipe is
+operator-initiated and confirmed in-session. No reaching into RAID
+controller-hidden member disks: devices the OS cannot enumerate directly are
+out of scope rather than partially supported.
 
 ---
 
@@ -486,6 +626,21 @@ phone home fails the build rather than shipping.
 - **`paste`**, reached via `netstat2`, carries an unmaintained advisory
   (RUSTSEC-2024-0436). It is a compile-time proc-macro contributing no code to
   the binary; the exception and its review date are documented in `deny.toml`.
+- **Sanitize issues no hardware purge command**, and refuses crypto-erase on
+  every device. Both are stated on the certificate rather than implied away;
+  the reasoning is in [Secure erasure](#secure-erasure).
+- **Sanitize does not use unbuffered I/O.** Raw devices are opened
+  write-through (`FILE_FLAG_WRITE_THROUGH` / `O_SYNC`) and synced after every
+  pass, but not with `FILE_FLAG_NO_BUFFERING` / `O_DIRECT`, which require every
+  chunk and the tail short-write to be aligned to the physical sector size.
+  Closing that gap is a prerequisite for turning them on unconditionally; the
+  constraint is documented on `RawDeviceTarget`.
+- **Overwriting an SSD cannot reach every physical cell.** Wear levelling keeps
+  remapped blocks out of the addressable range. This is a media property, not a
+  tool limitation, and it is why the hardware purge path above matters.
+- **Device enumeration needs elevation.** Unprivileged, drive sizes cannot be
+  read; devices are still listed, with the size shown as `unknown`, rather than
+  the tool reporting an empty device list on a machine that has disks.
 
 ---
 

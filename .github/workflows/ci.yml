@@ -48,6 +48,15 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
+      # The erasure engine, its safety rails and its pattern sequences run
+      # against file-backed virtual devices, so they need no attached disk and
+      # no elevation. Called out separately from the workspace run so a failure
+      # here is legible as "a safety rail broke" rather than one line in a
+      # hundred — this is the suite that stands between an operator and the
+      # wrong drive.
+      - name: Safety rails (virtual devices)
+        run: cargo test -p arachnid-sanitize-core --test safety_rails
+
   # Typecheck the Windows collectors from Linux too, so a change to the
   # cfg(windows) modules cannot merge on the strength of a Linux build alone.
   cross-check:
@@ -63,7 +72,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # clippy, not check: lints that only fire on cfg(windows) code are
       # invisible to a Linux build, and waiting for the windows-latest job to
-      # find them costs a full CI round trip.
+      # find them costs a full CI round trip. Now also covers the Windows
+      # device-enumeration and raw-device ioctl paths in arachnid-sanitize-core.
       - run: cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings
 
   fmt:

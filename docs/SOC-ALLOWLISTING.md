@@ -12,6 +12,12 @@ This document tells you exactly what the binary touches so you can write a
 narrow allow rule instead of a broad one. Nothing here is marketing: if a
 behaviour is not on this page, it is a bug, and we want the report.
 
+> **Two binaries, two decisions.** `arachnid-core` (and `arachnid-tui`) are
+> read-only against the target. `arachnid-sanitize` **destroys data on raw
+> block devices** and should be assessed separately — see
+> [§4a](#4a-arachnid-sanitize-raw-device-writes). Allowlisting one does not
+> imply the other, and for most sites it should not.
+
 ---
 
 ## 1. Identity
@@ -106,6 +112,65 @@ scratch directories, no config files, and no writes to any system location.
 
 `--dry-run` performs every collection and every hash but writes nothing at all,
 including not creating the container directory. Use it to validate a rule.
+
+> **`arachnid-sanitize` is the exception, and it is a large one.** Everything
+> above describes `arachnid-core`. The suite's erasure module writes directly
+> to raw block devices and is covered in [§4a](#4a-arachnid-sanitize-raw-device-writes)
+> below. If you are allowlisting the suite, read that section — a rule scoped to
+> `arachnid-core` does not describe it.
+
+---
+
+## 4a. `arachnid-sanitize`: raw device writes
+
+`arachnid-sanitize` destroys data by design. Its behaviour is deliberately
+indistinguishable, at the syscall level, from a disk-wiping wiper-malware
+sample, because it is doing the same thing for an authorized reason.
+
+**Treat it as a separate allowlisting decision from `arachnid-core`.** Many
+sites will want it allowlisted on dedicated disposal workstations only, or not
+at all.
+
+### What it does that will trip EDR
+
+| Behaviour | Detail |
+|---|---|
+| Raw device handles | Opens `\\.\PhysicalDriveN` / `/dev/sdX` for **write**, with `FILE_FLAG_WRITE_THROUGH` / `O_SYNC`. |
+| Bulk sequential overwrite | 4 MiB chunks, whole-device, 1–7 passes depending on method. |
+| Device enumeration | `IOCTL_STORAGE_QUERY_PROPERTY`, `IOCTL_DISK_GET_LENGTH_INFO`, `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` per drive letter (Windows); `/sys/block/**`, `/proc/mounts` (Linux). All read-only. |
+| Requires elevation | Administrator / root. Enumeration alone degrades gracefully without it. |
+
+### What it does not do
+
+- No network access of any kind — no remote trigger, no reporting home.
+- No scheduling, no persistence, no service installation. Every wipe is
+  operator-initiated and confirmed in the same session.
+- No self-deletion, no log clearing, no attempt to hide the operation.
+- No writes outside the named device and the certificate directory.
+
+### File writes
+
+```
+<cert-dir>/certificates.log            append-only, Ed25519-signed register
+<cert-dir>/erasure-<id>.{md,html}      only on explicit export
+```
+
+### Detection guidance
+
+Rather than allowlisting broadly, prefer **alerting on it and confirming out of
+band**. A genuine `arachnid-sanitize` run is a planned, ticketed event; an
+unplanned one is exactly the incident you want the alert for. The binary is
+code-signed and its subcommand names are visible to `strings` (the release
+build fails otherwise), so identity is checkable.
+
+`--dry-run` exercises enumeration, method selection and every safety rail while
+writing **zero bytes** to the device. Use it to validate a rule without
+destroying media; it is asserted by test, not by inspection.
+
+The `--log` operational log records the device path, serial, method, pass count
+and outcome of every run, and the certificate register is an independent,
+tamper-evident record of every *completed* wipe. Between them, "what did this
+tool erase and when" is answerable after the fact.
 
 ### Reads
 
