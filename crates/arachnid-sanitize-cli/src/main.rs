@@ -366,6 +366,17 @@ fn cmd_wipe(cli: &Cli, a: &WipeArgs) -> Result<u8> {
 
     if a.dry_run {
         println!("\nDRY RUN — nothing was written. Re-run without --dry-run to erase.");
+        if a.confirm_serial.is_none() {
+            // A dry run without a typed serial stands the device's own in, so
+            // the serial rail was not actually exercised. Saying so matters:
+            // otherwise a clean dry run reads as proof the real invocation will
+            // be accepted, and it is not.
+            println!(
+                "Note: --confirm-serial was not supplied, so the serial check did not run.\n\
+                 The real wipe will require --confirm-serial {}",
+                selected.serial
+            );
+        }
         return Ok(exit::OK);
     }
 
