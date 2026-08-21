@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use arachnid_netcap as netcap;
+use arachnid_sanitize_core as sanitize;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
 
@@ -33,19 +34,23 @@ pub enum AppScreen {
     Parse,
     Verify,
     Report,
+    /// Secure erasure. The only screen here that writes to a device rather than
+    /// reading from one; see `screens::sanitize`.
+    Sanitize,
     /// The chain-of-custody log, reached from Verify and Report. Not a tab: it
     /// is a drill-down, and `Esc` returns to whichever screen opened it.
     Custody,
 }
 
-/// The numbered tabs, in `1`..`6` order.
-pub const TABS: [AppScreen; 6] = [
+/// The numbered tabs, in `1`..`7` order.
+pub const TABS: [AppScreen; 7] = [
     AppScreen::Dashboard,
     AppScreen::Collect,
     AppScreen::Capture,
     AppScreen::Parse,
     AppScreen::Verify,
     AppScreen::Report,
+    AppScreen::Sanitize,
 ];
 
 impl AppScreen {
@@ -58,6 +63,7 @@ impl AppScreen {
             AppScreen::Parse => "Parse PCAP",
             AppScreen::Verify => "Verify",
             AppScreen::Report => "Report",
+            AppScreen::Sanitize => "Sanitize",
             AppScreen::Custody => "Chain of custody",
         }
     }
@@ -124,8 +130,9 @@ pub const GLOBAL: &[Binding] = &[
             k(KeyCode::Char('4')),
             k(KeyCode::Char('5')),
             k(KeyCode::Char('6')),
+            k(KeyCode::Char('7')),
         ],
-        label: "1-6",
+        label: "1-7",
         desc: "jump to screen",
         action: Global::Jump,
     },
@@ -349,6 +356,23 @@ pub struct Job {
     pub started: Instant,
 }
 
+/// A wipe running in the background. Held here rather than in the Sanitize
+/// screen so it survives the operator navigating away — a multi-pass wipe of a
+/// large disk runs for hours, and pinning them to one screen for that long is
+/// not a real workflow.
+///
+/// Only ever one: two concurrent wipes would compete for bus bandwidth and make
+/// each other's throughput and ETA meaningless, and the confirmation flow is
+/// per-device by design.
+pub struct SanitizeJob {
+    pub cancel: Arc<AtomicBool>,
+    pub progress: Arc<sanitize::engine::Progress>,
+    pub started: Instant,
+    pub device: String,
+    pub method: &'static str,
+    pub dry_run: bool,
+}
+
 pub enum Msg {
     Init(Box<InitReport>),
     /// A collector is about to run, by name from `arachnid_collect::COLLECTORS`.
@@ -360,6 +384,8 @@ pub enum Msg {
     VerifyDone(Box<Result<screens::verify::Done, String>>),
     ReportDone(Box<Result<screens::report::Done, String>>),
     CustodyDone(Box<Result<screens::custody::Done, String>>),
+    SanitizeDevices(Box<Result<Vec<sanitize::Device>, String>>),
+    SanitizeDone(Box<Result<screens::sanitize::Done, String>>),
     Toast(String, bool),
 }
 
@@ -383,6 +409,7 @@ pub enum Action {
     StartCollect,
     StartCapture,
     Export,
+    CancelWipe,
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +437,7 @@ pub struct App {
     pub init: Option<InitReport>,
     pub busy: Option<Job>,
     pub capture: Option<Running>,
+    pub sanitize_job: Option<SanitizeJob>,
 
     pub tx: Sender<Msg>,
     rx: Receiver<Msg>,
@@ -421,6 +449,7 @@ pub struct App {
     pub verify: screens::verify::State,
     pub report: screens::report::State,
     pub custody: screens::custody::State,
+    pub sanitize: screens::sanitize::State,
 }
 
 impl App {
@@ -443,6 +472,7 @@ impl App {
             init: None,
             busy: None,
             capture: None,
+            sanitize_job: None,
             tx,
             rx,
             dashboard: Default::default(),
@@ -452,6 +482,7 @@ impl App {
             verify: screens::verify::State::new(&saved),
             report: screens::report::State::new(&saved),
             custody: Default::default(),
+            sanitize: screens::sanitize::State::new(&saved),
             saved,
         }
     }
@@ -499,7 +530,19 @@ impl App {
     }
 
     /// Anything that would be lost by quitting now.
+    ///
+    /// A running wipe comes first: it is the only job here whose interruption
+    /// leaves a device in a state nothing can recover, so it is the one the
+    /// operator most needs named in the prompt.
     pub fn work_in_flight(&self) -> Option<String> {
+        if let Some(j) = &self.sanitize_job {
+            if !j.dry_run {
+                return Some(format!(
+                    "a wipe of {} is running and the device will be left partially overwritten",
+                    j.device
+                ));
+            }
+        }
         if self.capture.is_some() {
             return Some("a packet capture is running".into());
         }
@@ -654,12 +697,19 @@ impl App {
                     // capture to an abrupt exit is losing evidence.
                     c.stop.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
+                // Same reasoning, higher stakes: the wipe thread stops at the
+                // next chunk so the outcome records how far it got, rather than
+                // leaving a half-overwritten device with nothing written down.
+                if let Some(j) = &self.sanitize_job {
+                    j.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
                 self.quit = true;
             }
             Action::StopCapture => screens::capture::stop(self),
             Action::StartCollect => screens::collect::start(self),
             Action::StartCapture => screens::capture::start(self),
             Action::Export => screens::parse::export(self),
+            Action::CancelWipe => screens::sanitize::cancel(self),
         }
     }
 
@@ -718,6 +768,8 @@ impl App {
                 self.busy = None;
                 screens::custody::finished(self, *r);
             }
+            Msg::SanitizeDevices(r) => screens::sanitize::adopt_devices(self, *r),
+            Msg::SanitizeDone(r) => screens::sanitize::finished(self, *r),
             Msg::Toast(text, error) => self.toast(text, error),
         }
     }

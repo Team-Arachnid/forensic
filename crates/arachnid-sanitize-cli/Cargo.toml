@@ -1,0 +1,25 @@
+[package]
+name = "arachnid-sanitize-cli"
+description = "Arachnid Sanitize: NIST/DoD-compliant secure erasure for authorized DFIR and IT asset disposal."
+version.workspace = true
+edition.workspace = true
+# Follows arachnid-sanitize-core's floor.
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "arachnid-sanitize"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+arachnid-evidence.workspace = true
+arachnid-sanitize-core.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+clap = { version = "4.6", features = ["derive"] }
+ctrlc = "3.5"
+ed25519-dalek = "3.0"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }

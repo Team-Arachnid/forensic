@@ -1,0 +1,36 @@
+[package]
+name = "arachnid-sanitize-core"
+description = "NIST SP 800-88 / DoD 5220.22-M secure erasure: device enumeration, wipe engines, verification, signed certificates."
+version.workspace = true
+edition.workspace = true
+# Matches arachnid-core-tui's floor: raw device I/O on Windows pulls in the
+# same `windows` crate, which needs 1.88. The CLI-only crates stay on 1.82.
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+arachnid-evidence.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+time.workspace = true
+tracing.workspace = true
+ed25519-dalek = "3.0"
+getrandom = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Ioctl",
+] }
+
+[dev-dependencies]
+tempfile = "3.15"
+# The sample-certificate fixture signs with a fixed key so the checked-in
+# sample is stable across regenerations; see tests/fixture.rs.
+ed25519-dalek = "3.0"

@@ -106,7 +106,7 @@ mod tests {
     /// check that has to exist: it fails if any screen cannot draw itself.
     #[test]
     fn every_screen_renders_at_every_supported_size() {
-        const SCREENS: [AppScreen; 8] = [
+        const SCREENS: [AppScreen; 9] = [
             AppScreen::Splash,
             AppScreen::Dashboard,
             AppScreen::Collect,
@@ -114,6 +114,7 @@ mod tests {
             AppScreen::Parse,
             AppScreen::Verify,
             AppScreen::Report,
+            AppScreen::Sanitize,
             AppScreen::Custody,
         ];
 
@@ -131,6 +132,124 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Sanitize is a state machine of sub-views, and each one has its own
+    /// layout. Rendering only its default view would leave the other four
+    /// untested, and a layout that panics takes the terminal with it.
+    #[test]
+    fn every_sanitize_sub_view_renders_at_every_supported_size() {
+        use screens::sanitize::View;
+
+        const VIEWS: [View; 5] = [
+            View::Devices,
+            View::Method,
+            View::Confirm,
+            View::Progress,
+            View::Result,
+        ];
+
+        for (w, h) in [(80, 24), (32, 8), (200, 60), (60, 16)] {
+            for view in VIEWS {
+                let mut app = App::new(app::LogBuf::default());
+                app.screen = AppScreen::Sanitize;
+                app.sanitize.view = view;
+                // A device present, so the views that describe one have
+                // something to draw rather than bailing to the list.
+                app.sanitize.devices = vec![arachnid_sanitize_core::Device {
+                    path: "/dev/sdz".into(),
+                    model: "TEST DISK".into(),
+                    serial: "TEST-0001".into(),
+                    size_bytes: 512 * 1024 * 1024,
+                    bus: arachnid_sanitize_core::BusType::Sata,
+                    removable: true,
+                    is_system: true,
+                    system_reason: Some("test fixture".into()),
+                }];
+                let mut terminal = Terminal::new(TestBackend::new(w, h)).expect("test backend");
+                terminal
+                    .draw(|frame| ui::render(frame, &mut app))
+                    .unwrap_or_else(|e| panic!("Sanitize/{view:?} at {w}x{h}: {e}"));
+            }
+        }
+    }
+
+    /// The confirm view must not be clearable by the reflexes that clear the
+    /// ordinary y/n dialog, and must not accept the commit key before the
+    /// cooldown has elapsed.
+    #[test]
+    fn the_wipe_confirm_resists_muscle_memory() {
+        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use screens::sanitize::View;
+
+        let mut app = App::new(app::LogBuf::default());
+        app.screen = AppScreen::Sanitize;
+        app.sanitize.devices = vec![arachnid_sanitize_core::Device {
+            path: "/dev/sdz".into(),
+            model: "TEST DISK".into(),
+            serial: "TEST-0001".into(),
+            size_bytes: 512 * 1024 * 1024,
+            bus: arachnid_sanitize_core::BusType::Sata,
+            removable: false,
+            is_system: false,
+            system_reason: None,
+        }];
+        app.sanitize.view = View::Confirm;
+        app.sanitize.confirm_since = Some(Instant::now());
+        app.sanitize.serial.set("TEST-0001");
+        app.sanitize.dry_run = false;
+
+        // y and Enter are what the ordinary confirm takes. Neither may start a
+        // wipe from here.
+        for code in [KeyCode::Char('y'), KeyCode::Enter] {
+            app.editing = false;
+            app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+            assert!(
+                app.sanitize_job.is_none(),
+                "{code:?} started a wipe from the confirm view"
+            );
+        }
+
+        // The commit key itself is refused while the countdown is running.
+        app.editing = false;
+        app.on_key(KeyEvent::new(KeyCode::Char('W'), KeyModifiers::SHIFT));
+        assert!(
+            app.sanitize_job.is_none(),
+            "the commit key was accepted before the cooldown elapsed"
+        );
+    }
+
+    /// A wipe in flight is the one job whose loss cannot be undone, so quitting
+    /// must ask, and must tell the wipe to stop rather than dropping it.
+    #[test]
+    fn quitting_mid_wipe_asks_first() {
+        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut app = App::new(app::LogBuf::default());
+        app.screen = AppScreen::Dashboard;
+        app.sanitize_job = Some(app::SanitizeJob {
+            cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            progress: std::sync::Arc::new(arachnid_sanitize_core::engine::Progress::default()),
+            started: Instant::now(),
+            device: "/dev/sdz".into(),
+            method: "NIST SP 800-88 Clear",
+            dry_run: false,
+        });
+
+        app.on_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE));
+        assert!(!app.quit, "quit without confirming during a wipe");
+        assert!(app.confirm.is_some(), "no confirmation was raised");
+
+        app.on_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+        assert!(app.quit);
+        assert!(
+            app.sanitize_job
+                .as_ref()
+                .expect("wipe handle")
+                .cancel
+                .load(std::sync::atomic::Ordering::Relaxed),
+            "quit did not ask the wipe to stop"
+        );
     }
 
     /// The splash has to actually say what this is; a blank one is a hang that

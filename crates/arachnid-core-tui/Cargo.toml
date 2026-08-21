@@ -20,6 +20,7 @@ arachnid-collect.workspace = true
 arachnid-evidence.workspace = true
 arachnid-netcap.workspace = true
 arachnid-report.workspace = true
+arachnid-sanitize-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
