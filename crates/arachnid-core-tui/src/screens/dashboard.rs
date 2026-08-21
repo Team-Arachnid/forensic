@@ -26,6 +26,15 @@ const TILES: [(AppScreen, &str); 6] = [
     ),
 ];
 
+/// Status cards across the top. Named because three things depend on it — the
+/// column split, the width each card ellipsizes to, and the terminal width
+/// below which the boxes are dropped — and they must not drift apart.
+const CARDS: usize = 4;
+
+/// Columns a boxed card needs to hold its values without wrapping. Below
+/// `CARDS * MIN_CARD_W` the cards are listed flat instead.
+const MIN_CARD_W: u16 = 33;
+
 #[derive(Default)]
 pub struct State {
     pub tile: usize,
@@ -52,10 +61,10 @@ pub fn on_key(app: &mut App, key: KeyEvent) -> bool {
 pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     let t = Theme::get();
 
-    // Below 132 columns four cards side by side leave no room for their values.
-    // Narrow terminals drop the boxes entirely rather than shrink them: borders
-    // cost six rows that the content needs more.
-    let boxed = area.width >= 132;
+    // Below CARDS * MIN_CARD_W the cards side by side leave no room for their
+    // values. Narrow terminals drop the boxes entirely rather than shrink them:
+    // borders cost six rows that the content needs more.
+    let boxed = area.width >= CARDS as u16 * MIN_CARD_W;
     let cards = status_cards(app, area.width as usize);
     let card_h = if boxed {
         cards.iter().map(|(_, l)| l.len()).max().unwrap_or(1) as u16 + 2
@@ -71,7 +80,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     .areas(area);
 
     if boxed {
-        let boxes: [Rect; 4] = Layout::horizontal([Constraint::Ratio(1, 4); 4]).areas(head);
+        let boxes: [Rect; CARDS] =
+            Layout::horizontal([Constraint::Ratio(1, CARDS as u32); CARDS]).areas(head);
         for (slot, (title, lines)) in boxes.into_iter().zip(cards) {
             ui::card(frame, slot, title, lines);
         }
@@ -128,10 +138,14 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(Paragraph::new(wl).wrap(Wrap { trim: true }), warns);
 }
 
-/// The four status cards, as (title, body). Built once and then either boxed
-/// or listed, so the two layouts can never say different things.
-fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>); 4] {
+/// The status cards, as (title, body). Built once and then either boxed or
+/// listed, so the two layouts can never say different things.
+fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>); CARDS] {
     let t = Theme::get();
+    // Columns available inside one card. Derived from the card count rather
+    // than hardcoded, so adding the fourth card could not leave the other three
+    // ellipsizing to a width that no longer exists.
+    let cell = width / CARDS;
 
     let privilege = match &app.init {
         None => vec![Line::from(ui::dim("checking…"))],
@@ -150,7 +164,7 @@ fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>);
         Some(r) => match (&r.capture_error, r.devices.len()) {
             (Some(e), _) => vec![
                 Line::styled("unavailable", t.verdict(false)),
-                Line::from(ui::dim(ui::ellipsis(e, width / 3))),
+                Line::from(ui::dim(ui::ellipsis(e, cell))),
             ],
             (None, 0) => vec![
                 Line::styled("no devices visible", t.verdict(false)),
@@ -164,7 +178,7 @@ fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>);
                         .map(|d| d.name.as_str())
                         .collect::<Vec<_>>()
                         .join(", "),
-                    width / 3,
+                    cell,
                 ))),
             ],
         },
@@ -172,7 +186,7 @@ fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>);
 
     let mut session = match &app.saved.last_container {
         None => vec![Line::from(ui::dim("no container yet"))],
-        Some(c) => vec![Line::raw(ui::ellipsis(c, width / 3))],
+        Some(c) => vec![Line::raw(ui::ellipsis(c, cell))],
     };
     session.push(Line::from(vec![
         ui::dim("operator "),
@@ -204,7 +218,7 @@ fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>);
                         Style::new().fg(t.bad).add_modifier(Modifier::BOLD)
                     },
                 ),
-                Line::from(ui::dim(ui::ellipsis(&j.device, width / 4))),
+                Line::from(ui::dim(ui::ellipsis(&j.device, cell))),
                 Line::from(ui::dim(format!(
                     "pass {pass}/{passes}  {:.1}%",
                     p.fraction() * 100.0
