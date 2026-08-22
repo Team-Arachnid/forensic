@@ -33,6 +33,7 @@ arachnid-sanitize cert --verify                       # check the certificate re
 
 ## Contents
 
+- [Documentation](#documentation)
 - [Design stance](#design-stance)
 - [Install and build](#install-and-build)
 - [Usage](#usage)
@@ -44,6 +45,17 @@ arachnid-sanitize cert --verify                       # check the certificate re
 - [Output schema](#output-schema)
 - [Development](#development)
 - [Known limitations](#known-limitations)
+
+---
+
+## Documentation
+
+| Where | What |
+|---|---|
+| **[Wiki](docs/wiki/Home.md)** | full reference: concepts, CLI, TUI, container format, collectors, network forensics, schemas, workflows, threat model, secure erasure, development, troubleshooting, FAQ |
+| [Usage guide](arachnid-usage-guide.md) | task-oriented walkthrough for operators, with real output |
+| [SOC allowlisting](docs/SOC-ALLOWLISTING.md) | full behavioural disclosure for detection engineering |
+| `--help` | every flag, always current |
 
 ---
 
