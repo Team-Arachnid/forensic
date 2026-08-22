@@ -242,14 +242,15 @@ probes become a warning banner, never a refusal to start: an unprivileged
 operator can still verify and report on a container collected elsewhere.
 
 ```
-                       /\   /\
-                      (  o.o  )
-                        > ^ <
-               _.-'~~~~~~~~~~~~~~~'-._
-               .'                   '.
-               |      ARACHNID       |
-               |  F O R E N S I C S  |
-               '.___________________.'
+                  \   \  \   /\   /  /   /
+                   \   \  \ (oo) /  /   /
+                    \   \__\/__\/__/   /
+                     \____/ /  \ \____/
+                      ___/ /(  )\ \___
+                     /   /  \__/  \   \
+                    /   /    /\    \   \
+                          ARACHNID
+                     F O R E N S I C S
 
                   ⠋ checking host…
               authorized DFIR use only

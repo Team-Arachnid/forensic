@@ -41,7 +41,11 @@ impl Theme {
             }
         } else {
             Theme {
-                accent: Color::Cyan,
+                // Magenta for the spider the suite is named after. It is the
+                // one ANSI slot that collides with none of the three verdict
+                // colours below, so the accent can never be misread as a
+                // verdict — and the terminal's own palette picks the shade.
+                accent: Color::Magenta,
                 ok: Color::Green,
                 bad: Color::Red,
                 warn: Color::Yellow,
@@ -287,19 +291,43 @@ fn log_pane(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
 // Splash
 // ---------------------------------------------------------------------------
 
-/// The wordmark, 23 columns wide, every row the same width so it centres cleanly.
-const ART: [&str; 8] = [
-    r"        /\   /\        ",
-    r"       (  o.o  )       ",
-    r"         > ^ <         ",
-    r"_.-'~~~~~~~~~~~~~~~'-._",
-    r".'                   '.",
-    r"|      ARACHNID       |",
-    r"|  F O R E N S I C S  |",
-    r"'.___________________.'",
+/// The full mark. Kept as art in its own file rather than as a string literal
+/// here, so it can be edited in a drawing tool and dropped back in.
+const LOGO: &str = include_str!("logo.txt");
+const LOGO_W: u16 = 90;
+
+/// The compact mark, for the terminal sizes operators actually run. Every row
+/// is the same width so it centres cleanly.
+const ART: [&str; 9] = [
+    r"\   \  \   /\   /  /   /",
+    r" \   \  \ (oo) /  /   / ",
+    r"  \   \__\/__\/__/   /  ",
+    r"   \____/ /  \ \____/   ",
+    r"    ___/ /(  )\ \___    ",
+    r"   /   /  \__/  \   \   ",
+    r"  /   /    /\    \   \  ",
+    r"        ARACHNID        ",
+    r"   F O R E N S I C S    ",
 ];
 
-const ART_W: u16 = 23;
+const ART_W: u16 = 24;
+
+/// Ticks the mark takes to draw itself. At the 60 ms tick this lands just
+/// inside `SPLASH_MIN`, so the reveal finishes before the splash can end —
+/// whichever mark is drawing, and however many rows it has.
+const REVEAL_TICKS: usize = 14;
+
+/// Rows of `art` revealed so far, padded back to full height so the block does
+/// not jump upward as it draws.
+fn revealed(art: &[&'static str], frame: u64, style: Style) -> Vec<Line<'static>> {
+    let shown = (frame as usize * art.len() / REVEAL_TICKS + 1).min(art.len());
+    let mut text: Vec<Line> = art[..shown]
+        .iter()
+        .map(|l| Line::from(Span::styled(*l, style)))
+        .collect();
+    text.resize(art.len(), Line::raw(""));
+    text
+}
 
 fn splash(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
     let status = match &app.init {
@@ -327,21 +355,36 @@ fn splash(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
         return;
     }
 
-    // Progressive reveal: one row every other tick, so the mark draws itself in
-    // roughly half the minimum splash time and is whole well before it ends.
-    let shown = ((app.frame / 2) as usize + 1).min(ART.len());
-    let mut text: Vec<Line> = ART[..shown]
-        .iter()
-        .map(|l| Line::from(Span::styled(*l, Style::new().fg(t.accent))))
-        .collect();
-    text.resize(ART.len(), Line::raw(""));
+    // The full mark only when it genuinely fits; the compact one otherwise.
+    // Scaling the big art down turns it into noise, so it is shown whole or not
+    // at all.
+    let logo: Vec<&'static str> = LOGO.lines().collect();
+    let big = area.width >= LOGO_W + 2 && area.height >= logo.len() as u16 + 5;
+    let (art, w) = if big {
+        (logo.as_slice(), LOGO_W)
+    } else {
+        (&ART[..], ART_W)
+    };
+
+    // Progressive reveal, so the mark draws itself while the host is probed.
+    let mut text = revealed(art, app.frame, Style::new().fg(t.accent));
+    if big {
+        // The big art is the spider alone, so it needs the wordmark under it.
+        // The compact one already carries its own.
+        text.push(Line::raw(""));
+        text.push(Line::styled(
+            "ARACHNID FORENSICS",
+            Style::new().fg(t.accent).add_modifier(Modifier::BOLD),
+        ));
+    }
     text.push(Line::raw(""));
     text.push(Line::styled(status, t.dimmed()));
     text.push(Line::styled("authorized DFIR use only", t.dimmed()));
 
+    let h = text.len() as u16;
     frame.render_widget(
         Paragraph::new(text).alignment(Alignment::Center),
-        centre(area, ART_W + 2, ART.len() as u16 + 3),
+        centre(area, w + 2, h),
     );
 }
 
@@ -517,6 +560,20 @@ mod tests {
                 line.chars().count(),
                 ART_W as usize,
                 "row {i} is {:?}",
+                line
+            );
+        }
+    }
+
+    /// Same rule for the file-backed mark, which is the one most likely to be
+    /// re-edited in a drawing tool and pasted back ragged.
+    #[test]
+    fn the_logo_file_is_rectangular() {
+        for (i, line) in LOGO.lines().enumerate() {
+            assert_eq!(
+                line.chars().count(),
+                LOGO_W as usize,
+                "logo.txt row {i} is {:?}",
                 line
             );
         }
