@@ -22,7 +22,10 @@ BLOB="https://github.com/$REPO/blob/$BRANCH"
 
 [ -d "$SRC" ] || { echo "no wiki source at $SRC" >&2; exit 1; }
 
-TOKEN="$(gh auth token)"
+# tail -n1: a version manager (mise, asdf) can print a banner to stdout ahead of
+# the token, and splicing that into the URL makes git fail with "credential url
+# cannot be parsed" — which reads exactly like an uninitialised wiki.
+TOKEN="$(gh auth token | tail -n1)"
 REMOTE="https://x-access-token:${TOKEN}@github.com/${REPO}.wiki.git"
 
 if ! git ls-remote "$REMOTE" >/dev/null 2>&1; then
