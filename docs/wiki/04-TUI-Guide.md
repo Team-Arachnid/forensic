@@ -49,18 +49,24 @@ On launch it shows the wordmark while it probes the host in the background:
   devices are visible.
 
 ```
-                       /\   /\
-                      (  o.o  )
-                        > ^ <
-               _.-'~~~~~~~~~~~~~~~'-._
-               .'                   '.
-               |      ARACHNID       |
-               |  F O R E N S I C S  |
-               '.___________________.'
+                  \   \  \   /\   /  /   /
+                   \   \  \ (oo) /  /   /
+                    \   \__\/__\/__/   /
+                     \____/ /  \ \____/
+                      ___/ /(  )\ \___
+                     /   /  \__/  \   \
+                    /   /    /\    \   \
+                          ARACHNID
+                     F O R E N S I C S
 
                   ⠋ checking host…
               authorized DFIR use only
 ```
+
+The mark draws itself row by row while the probes run. On a terminal at least
+92 columns and 53 rows the full spider is drawn instead of the compact one
+above; below 29×14 both give way to a plain wordmark, because scaling the art
+down turns it into noise.
 
 The splash shows for at least 900 ms and at most 1600 ms; it exits early once
 the probes finish, and any key skips it after the minimum. Then the dashboard.
@@ -379,6 +385,10 @@ no room, because the screen under it is the work.
 
 ## Layout, colour and accessibility
 
+- **The accent colour is magenta**, for the spider the suite is named after. It
+  is the one ANSI slot that collides with none of the three verdict colours, so
+  "you are here" can never be misread as a verdict. Everything else on screen —
+  green for verified, red for failed, yellow for a warning — is unchanged.
 - **`NO_COLOR` is respected**, per [no-color.org](https://no-color.org): set and
   non-empty means monochrome, whatever the terminal claims to support.
 - **Every verdict is stated in text as well as colour**, so nothing is lost in a
