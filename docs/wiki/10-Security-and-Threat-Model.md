@@ -1,3 +1,9 @@
+---
+# Empty on purpose. Jekyll only renders a file that carries a front-matter
+# block, and the layout itself comes from the defaults in _config.yml — so
+# nothing here has to be repeated per page, and scripts/publish-wiki.sh
+# strips this block again before the page reaches the GitHub wiki.
+---
 # 10 · Security & Threat Model
 
 [← Workflows](09-Workflows.md) · [Home](Home.md) · [Next: Development →](11-Development.md)

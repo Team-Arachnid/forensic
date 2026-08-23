@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{%- assign here = site.nav | where: "path", page.path | first -%}
+{%- if page.title -%}{%- assign heading = page.title -%}
+{%- elsif here -%}{%- assign heading = here.title -%}
+{%- else -%}{%- assign heading = site.title -%}{%- endif -%}
+<title>{{ heading }} · {{ site.title }}</title>
+<meta name="description" content="{{ page.description | default: site.description }}">
+<link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#x1F577;</text></svg>">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="topbar">
+  <a class="brand" href="{{ '/' | relative_url }}">
+    <span class="brand-mark" aria-hidden="true">&#x1F577;</span>
+    <span class="brand-name">Arachnid <span class="brand-thin">Forensic</span></span>
+  </a>
+  <nav class="topbar-links">
+    <a href="https://github.com/ArachnidGs/forensic">Repository</a>
+    <a href="https://github.com/ArachnidGs/forensic/wiki">Wiki</a>
+  </nav>
+  <button class="menu" aria-expanded="false" aria-controls="sidebar">Menu</button>
+</header>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <p class="side-label">Documentation</p>
+    <ul>
+      {%- for item in site.nav %}
+      {%- assign target = item.path | prepend: '/' | replace: '.md', '.html' %}
+      <li><a href="{{ target | relative_url }}"{% if item.path == page.path %} aria-current="page"{% endif %}>{{ item.title }}</a></li>
+      {%- endfor %}
+    </ul>
+  </aside>
+
+  <main class="content" id="content">
+    {{ content }}
+    <footer class="page-foot">
+      {%- comment -%}
+        page.path is relative to the site source (docs/), so the repo path needs
+        the prefix back on or every edit link 404s.
+      {%- endcomment -%}
+      <a href="https://github.com/ArachnidGs/forensic/edit/main/docs/{{ page.path }}">Edit this page</a>
+      <span>·</span>
+      <span>Authorized DFIR use only</span>
+    </footer>
+  </main>
+</div>
+
+<script>
+// The wiki pages link out of docs/ with ../../ (README, LICENSE, schema/).
+// Those resolve inside the repo and are rewritten for the GitHub wiki by
+// scripts/publish-wiki.sh, but on a Pages site they land above the site root
+// and 404. Point them at the repo instead. Nothing else depends on this — with
+// JS off the links are exactly as broken as they would have been anyway.
+(function () {
+  var blob = 'https://github.com/ArachnidGs/forensic/blob/main/';
+  document.querySelectorAll('a[href^="../../"]').forEach(function (a) {
+    a.href = blob + a.getAttribute('href').replace(/^(\.\.\/)+/, '');
+  });
+  var btn = document.querySelector('.menu'), side = document.getElementById('sidebar');
+  btn.addEventListener('click', function () {
+    var open = side.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open);
+  });
+})();
+</script>
+</body>
+</html>

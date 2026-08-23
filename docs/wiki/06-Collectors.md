@@ -1,3 +1,9 @@
+---
+# Empty on purpose. Jekyll only renders a file that carries a front-matter
+# block, and the layout itself comes from the defaults in _config.yml — so
+# nothing here has to be repeated per page, and scripts/publish-wiki.sh
+# strips this block again before the page reaches the GitHub wiki.
+---
 # 6 · Collectors
 
 [← Evidence Container](05-Evidence-Container.md) · [Home](Home.md) · [Next: Network Forensics →](07-Network-Forensics.md)
@@ -79,13 +85,13 @@ Source: `sysinfo` (cross-platform), plus a per-platform module enumerator.
 {
   "pid": 11519,
   "parent_pid": 4611,
-  "name": "claude",
-  "cmdline": ["claude", "--resume"],
-  "exe": "/usr/lib/node_modules/claude/bin/claude",
+  "name": "sshd",
+  "cmdline": ["sshd: analyst [priv]"],
+  "exe": "/usr/sbin/sshd",
   "exe_sha256": "9b1c…4f2a",
-  "user": "analyst",
+  "user": "root",
   "start_time": 1787846420,
-  "cwd": "/home/analyst/case-4471",
+  "cwd": "/",
   "loaded_modules": ["/usr/lib/libc.so.6", "/usr/lib/libssl.so.3"]
 }
 ```
@@ -144,7 +150,7 @@ Linux, the IP Helper tables on Windows. IPv4 and IPv6, TCP and UDP.
   "remote_port": 443,
   "state": "ESTABLISHED",
   "pids": [11519],
-  "process_name": "claude"
+  "process_name": "sshd"
 }
 ```
 

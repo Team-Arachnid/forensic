@@ -1,3 +1,7 @@
+---
+# Empty on purpose: Jekyll only renders a file that carries a front-matter
+# block, and the layout comes from the defaults in _config.yml.
+---
 # SOC Allowlisting Guide — Arachnid Core
 
 **Audience:** the SOC, detection engineering, or EDR administration team being

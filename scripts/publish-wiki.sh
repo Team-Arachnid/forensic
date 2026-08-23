@@ -53,15 +53,16 @@ find "$WORK/wiki" -maxdepth 1 -name '*.md' -delete
 
 for src in "$SRC"/*.md; do
     name="$(basename "$src")"
-    # Order matters: rewrite the way out of the wiki first, so the .md strip
-    # below cannot chew the extension off a repo file URL. The delimiter has to
-    # be something no pattern contains — '#' would collide with the anchors.
-    sed -E \
+    # Drop the leading front-matter block. The pages carry one so the Pages site
+    # in docs/ renders them; gollum has no use for it and would show it. Only a
+    # block opening on line 1 counts, so a '---' rule mid-page survives.
+    awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; next} !fm' "$src" \
+    | sed -E \
         -e "s|\]\(\.\./\.\./|](${BLOB}/|g" \
         -e "s|\]\(\.\./|](${BLOB}/docs/|g" \
         -e "s|\]\(${BLOB}/([^)]*)/\)|](https://github.com/${REPO}/tree/${BRANCH}/\1/)|g" \
         -e 's|\]\(([A-Za-z0-9_-]+)\.md(#[^)]*)?\)|](\1\2)|g' \
-        "$src" > "$WORK/wiki/$name"
+        > "$WORK/wiki/$name"
 done
 
 cd "$WORK/wiki"
