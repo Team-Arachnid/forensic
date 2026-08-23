@@ -1,0 +1,69 @@
+# GitHub Pages build for docs/. The site is the wiki: the pages in wiki/ are the
+# same files the repo and the GitHub wiki render, with no front matter added to
+# them, so all three stay in sync and `scripts/publish-wiki.sh` keeps working.
+#
+# `defaults` below is what makes that possible — it applies the layout by path
+# instead of by a header in every file.
+
+title: Arachnid Forensic
+description: Live triage, network forensics and secure erasure for authorized DFIR use.
+baseurl: /forensic
+url: https://arachnidgs.github.io
+
+# jekyll-relative-links rewrites [x](02-Concepts.md) to the built page, which is
+# what lets the same link work in the repo, on the wiki and here.
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: false
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    default_lang: text
+
+defaults:
+  - scope: { path: "" }
+    values: { layout: "default" }
+
+exclude:
+  - README.md
+
+# The sidebar. Adding a page means adding a line here; nothing else knows the
+# order, and the layout reads the title back out of this list for <title>.
+nav:
+  - title: Overview
+    path: wiki/Home.md
+  - title: Getting Started
+    path: wiki/01-Getting-Started.md
+  - title: Core Concepts
+    path: wiki/02-Concepts.md
+  - title: CLI Reference
+    path: wiki/03-CLI-Reference.md
+  - title: Terminal UI
+    path: wiki/04-TUI-Guide.md
+  - title: Evidence Container
+    path: wiki/05-Evidence-Container.md
+  - title: Collectors
+    path: wiki/06-Collectors.md
+  - title: Network Forensics
+    path: wiki/07-Network-Forensics.md
+  - title: Reports & Schemas
+    path: wiki/08-Reports-and-Schemas.md
+  - title: Workflows
+    path: wiki/09-Workflows.md
+  - title: Security & Threat Model
+    path: wiki/10-Security-and-Threat-Model.md
+  - title: Development
+    path: wiki/11-Development.md
+  - title: Troubleshooting
+    path: wiki/12-Troubleshooting.md
+  - title: FAQ
+    path: wiki/13-FAQ.md
+  - title: Secure Erasure
+    path: wiki/14-Secure-Erasure.md
+  - title: SOC Allowlisting
+    path: SOC-ALLOWLISTING.md
