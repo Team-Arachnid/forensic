@@ -5,6 +5,8 @@ description: Live triage, network forensics and secure erasure for authorized DF
 
 <div class="hero" markdown="1">
 
+<img class="hero-mark" src="{{ '/assets/logo.png' | relative_url }}" alt="" width="128" height="128">
+
 # Arachnid Forensic
 
 <p class="tagline">Live triage, network forensics and secure erasure — collected into a tamper-evident, signed evidence container.</p>

@@ -1,7 +1,10 @@
 /* Arachnid Forensic docs — dark, and only dark.
-   The TUI accents magenta for the spider the suite is named after; this follows
-   it, and keeps green/red/amber reserved for the same verdict meanings they
-   carry there. */
+
+   Accent is the mark's red. Note this is the one place it can be: the TUI keeps
+   magenta, because there red already means "failed" and an accent that collides
+   with a verdict is a verdict you cannot trust. A docs site has no verdicts, so
+   the accent is free — the destructive-operation callout moved to amber below
+   so it still reads as its own thing rather than as more accent. */
 
 :root {
   --bg:        #0c0d11;
@@ -12,8 +15,8 @@
   --fg:        #d7dae6;
   --fg-quiet:  #8f95ad;
   --fg-faint:  #666c85;
-  --accent:    #c07cf0;
-  --accent-dim:#8b5fb0;
+  --accent:    #ff5f57;
+  --accent-dim:#a33b36;
   --ok:        #6fcf8a;
   --bad:       #f0736f;
   --warn:      #e0b35c;
@@ -63,7 +66,7 @@ body {
 }
 
 .brand { display: flex; align-items: center; gap: .6rem; text-decoration: none; color: var(--fg); }
-.brand-mark { font-size: 1.15rem; line-height: 1; filter: saturate(.6); }
+.brand-mark { width: 1.4rem; height: 1.4rem; display: block; }
 .brand-name { font-weight: 650; letter-spacing: -.01em; }
 .brand-thin { font-weight: 350; color: var(--fg-quiet); }
 
@@ -147,7 +150,7 @@ blockquote strong { color: var(--fg); }
 code {
   font-family: var(--mono); font-size: .875em;
   background: var(--bg-raised); border: 1px solid var(--line-soft);
-  padding: .12em .38em; border-radius: 4px; color: #e6c9ff;
+  padding: .12em .38em; border-radius: 4px; color: #ffb3ae;
   overflow-wrap: break-word;
 }
 
@@ -166,11 +169,11 @@ pre code {
    TOML — rather than the full theme. */
 .highlight .c, .highlight .c1, .highlight .cm, .highlight .cs { color: var(--fg-faint); font-style: italic; }
 .highlight .s, .highlight .s1, .highlight .s2, .highlight .se, .highlight .sb { color: #9ee6a8; }
-.highlight .k, .highlight .kd, .highlight .kn, .highlight .kr, .highlight .kt { color: var(--accent); }
+.highlight .k, .highlight .kd, .highlight .kn, .highlight .kr, .highlight .kt { color: #ff8a80; }
 .highlight .nb, .highlight .nf, .highlight .nn { color: #7fc9f0; }
 .highlight .m, .highlight .mi, .highlight .mf, .highlight .mh { color: var(--warn); }
 .highlight .nt { color: #7fc9f0; }
-.highlight .na { color: #e6c9ff; }
+.highlight .na { color: #ffb3ae; }
 .highlight .o, .highlight .p { color: var(--fg-quiet); }
 .highlight .err { color: var(--bad); background: none; }
 
@@ -204,6 +207,7 @@ img { max-width: 100%; height: auto; }
 /* ---------- landing ---------- */
 
 .hero { padding: 1rem 0 .5rem; }
+.hero-mark { width: 4.5rem; height: 4.5rem; margin-bottom: 1rem; }
 .hero h1 { font-size: 2.6rem; margin-bottom: .5rem; }
 .hero .tagline { font-size: 1.1rem; color: var(--fg-quiet); margin-bottom: 1.5rem; }
 
@@ -223,11 +227,12 @@ img { max-width: 100%; height: auto; }
 
 .warn-note {
   margin: 1.5rem 0; padding: .9rem 1.1rem;
-  background: color-mix(in srgb, var(--bad) 8%, var(--bg-raised));
-  border: 1px solid color-mix(in srgb, var(--bad) 30%, var(--line));
+  background: color-mix(in srgb, var(--warn) 7%, var(--bg-raised));
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
+  border-left: 3px solid var(--warn);
   border-radius: 8px;
 }
-.warn-note strong { color: var(--bad); }
+.warn-note strong { color: var(--warn); }
 
 /* ---------- narrow ---------- */
 
