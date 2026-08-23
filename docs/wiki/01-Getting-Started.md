@@ -60,8 +60,8 @@ sudo pacman -S libpcap                # Arch
 ## Development build
 
 ```bash
-git clone https://github.com/arachnid-forensic/arachnid-core.git
-cd arachnid-core
+git clone https://github.com/ArachnidGs/forensic.git
+cd forensic
 cargo build --release
 cargo test --workspace
 ```

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="media/logo-badge.png" width="132" alt="Arachnid Forensic">
+</p>
+
 # Arachnid Core
 
 **Live triage and network forensics for the Arachnid Forensic suite.**
