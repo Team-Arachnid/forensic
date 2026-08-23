@@ -22,4 +22,4 @@
 .vscode/
 .idea/
 
-# Local Claude Code / tooling state
+# Local tooling and agent state
