@@ -10,6 +10,8 @@ members = [
     "crates/arachnid-report",
     "crates/arachnid-sanitize-core",
     "crates/arachnid-sanitize-cli",
+    "crates/arachnid-recover-core",
+    "crates/arachnid-recover-cli",
 ]
 
 [workspace.package]
@@ -33,6 +35,8 @@ arachnid-core-cli = { path = "crates/arachnid-core-cli", version = "0.1.0" }
 arachnid-core-tui = { path = "crates/arachnid-core-tui", version = "0.1.0" }
 arachnid-evidence = { path = "crates/arachnid-evidence", version = "0.1.0" }
 arachnid-netcap = { path = "crates/arachnid-netcap", version = "0.1.0" }
+arachnid-recover-cli = { path = "crates/arachnid-recover-cli", version = "0.1.0" }
+arachnid-recover-core = { path = "crates/arachnid-recover-core", version = "0.1.0" }
 arachnid-report = { path = "crates/arachnid-report", version = "0.1.0" }
 arachnid-sanitize-cli = { path = "crates/arachnid-sanitize-cli", version = "0.1.0" }
 arachnid-sanitize-core = { path = "crates/arachnid-sanitize-core", version = "0.1.0" }

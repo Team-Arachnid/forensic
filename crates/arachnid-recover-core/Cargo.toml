@@ -1,0 +1,29 @@
+[package]
+name = "arachnid-recover-core"
+description = "File carving and filesystem-aware recovery: NTFS/ext4 metadata recovery, signature carving, confidence scoring."
+version.workspace = true
+edition.workspace = true
+# Matches arachnid-sanitize-core: the read-only raw device handle on Windows
+# pulls in the same `windows` crate, which needs 1.88.
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+arachnid-evidence.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+time.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+] }
+
+[dev-dependencies]
+tempfile = "3.15"
