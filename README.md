@@ -23,6 +23,16 @@ arachnid-core report      ./ev-host01 --format html -o triage.html
 arachnid-tui                                          # the same engine, driven from a TUI
 ```
 
+One command covers all of it:
+
+```bash
+cargo install --path crates/arachnid-cli
+
+arachnid-cli                                          # the TUI, every module
+arachnid-cli collect -o ./ev-host01                   # or any command directly
+arachnid-cli sanitize list-devices
+```
+
 The suite also ships **Arachnid Sanitize**, the secure erasure module. Unlike
 everything above, it *destroys* data — see [Secure erasure](#secure-erasure).
 
