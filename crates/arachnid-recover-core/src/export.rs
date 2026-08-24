@@ -53,6 +53,51 @@ pub struct ExportedFile {
     pub short_by: Option<u64>,
 }
 
+/// Confirm `source` is the media `results` was scanned from, before a single
+/// byte is written.
+///
+/// Every offset in a results index is relative to one specific source. Export
+/// from a different one and the bytes written are unrelated data — hashed into a
+/// custody log, filed under a recovered file's name, and indistinguishable from
+/// a real recovery afterwards. That is a forged evidence file produced by
+/// accident, so this is checked, not assumed.
+///
+/// Size is checked first because it is free and catches the common case. The
+/// fingerprint is what actually settles it: two images of the same size collide
+/// trivially.
+pub fn check_source_matches(
+    source: &mut dyn Source,
+    results: &ScanResults,
+) -> Result<Option<String>> {
+    if source.size() != results.source_size {
+        anyhow::bail!(
+            "the source is {} bytes but the scan read {} bytes. Every offset in the results \
+             would point at the wrong data; refusing to export.",
+            source.size(),
+            results.source_size
+        );
+    }
+    if results.source_fingerprint.is_empty() {
+        // An index from before the fingerprint existed, or a scan whose
+        // fingerprint failed. Say the check did not run; do not imply it passed.
+        return Ok(Some(
+            "the results carry no source fingerprint, so this export could only confirm the \
+             size matches — not that this is the same media the scan read"
+                .into(),
+        ));
+    }
+    let found = crate::source::fingerprint(source)?;
+    if found != results.source_fingerprint {
+        anyhow::bail!(
+            "this is not the source the scan read: fingerprint {found} does not match the \
+             recorded {}. The two are the same size, which is exactly why size alone is not \
+             enough. Refusing to export.",
+            results.source_fingerprint
+        );
+    }
+    Ok(None)
+}
+
 /// Export `files` from `source` into `output_dir`, logging every one into a new
 /// evidence container rooted there.
 ///
@@ -66,6 +111,9 @@ pub fn export(
     output_dir: &Path,
     operator: &str,
 ) -> Result<ExportReport> {
+    // Before anything is created, let alone written.
+    let unverified = check_source_matches(source, results)?;
+
     fs::create_dir_all(output_dir)
         .with_context(|| format!("create output directory {}", output_dir.display()))?;
 
@@ -78,6 +126,16 @@ pub fn export(
         files.len(),
         results.files.len()
     ))?;
+    // The caveat goes in the custody log, not only on the operator's terminal:
+    // whoever reads this container later is the one who needs to know the
+    // source identity was never confirmed.
+    match &unverified {
+        Some(why) => container.note(format!("source identity NOT verified: {why}"))?,
+        None => container.note(format!(
+            "source identity verified: fingerprint {}",
+            results.source_fingerprint
+        ))?,
+    }
 
     // The results index goes in first, so the custody log records what the
     // export was selected *from* before it records what came out.
@@ -103,8 +161,7 @@ pub fn export(
         };
         let target = container.artifact_path(&relative);
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("create {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
         }
 
         match write_one(source, file, &target) {
@@ -151,10 +208,7 @@ fn placement(file: &RecoveredFile) -> std::result::Result<String, String> {
         // about a carved file justifies a directory.
         return Ok(format!("carved/{}", sanitize_component(&file.export_name)));
     }
-    let path = file
-        .original_path
-        .as_deref()
-        .unwrap_or(&file.export_name);
+    let path = file.original_path.as_deref().unwrap_or(&file.export_name);
     let safe = safe_relative_path(path)?;
     Ok(format!("recovered/{safe}"))
 }
@@ -184,7 +238,10 @@ pub fn safe_relative_path(path: &str) -> std::result::Result<String, String> {
             }
             other => {
                 // A Windows drive prefix ("C:") is not a directory name.
-                if other.len() == 2 && other.ends_with(':') && other.as_bytes()[0].is_ascii_alphabetic() {
+                if other.len() == 2
+                    && other.ends_with(':')
+                    && other.as_bytes()[0].is_ascii_alphabetic()
+                {
                     continue;
                 }
                 parts.push(sanitize_component(other));
@@ -224,8 +281,8 @@ fn sanitize_component(name: &str) -> String {
     }
     // The Windows reserved device names are refused whatever the extension.
     const RESERVED: [&str; 22] = [
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
-        "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
     let stem = out.split('.').next().unwrap_or("").to_ascii_uppercase();
     if RESERVED.contains(&stem.as_str()) {
@@ -247,8 +304,8 @@ fn write_one(
 ) -> Result<(String, u64)> {
     use std::io::Write;
 
-    let mut out = fs::File::create(target)
-        .with_context(|| format!("create {}", target.display()))?;
+    let mut out =
+        fs::File::create(target).with_context(|| format!("create {}", target.display()))?;
     let mut hasher = Sha256::new();
     let mut written = 0u64;
     let mut buf = vec![0u8; COPY_CHUNK];
@@ -272,10 +329,7 @@ fn write_one(
         }
     }
     out.flush()?;
-    Ok((
-        arachnid_evidence::hex(&hasher.finalize()),
-        written,
-    ))
+    Ok((arachnid_evidence::hex(&hasher.finalize()), written))
 }
 
 fn export_summary(

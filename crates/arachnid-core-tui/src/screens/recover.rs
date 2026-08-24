@@ -182,7 +182,12 @@ impl State {
             include_live: false,
             types: recover::carve::known_types()
                 .into_iter()
-                .map(|t| (t.to_string(), recover::carve::default_types().iter().any(|d| d == t)))
+                .map(|t| {
+                    (
+                        t.to_string(),
+                        recover::carve::default_types().iter().any(|d| d == t),
+                    )
+                })
                 .collect(),
             output: Input::new(
                 saved
@@ -662,16 +667,14 @@ pub fn start(app: &mut App) {
         app.remember_image(p);
     }
     app.remember_recover_output(&output);
-    app.recover.export_dir.set(
-        output
-            .join("exported")
-            .display()
-            .to_string(),
-    );
+    app.recover
+        .export_dir
+        .set(output.join("exported").display().to_string());
 
     let tx = app.tx.clone();
     std::thread::spawn(move || {
-        let r = run_scan(&spec, &options, &progress, &cancel, &output).map_err(|e| format!("{e:#}"));
+        let r =
+            run_scan(&spec, &options, &progress, &cancel, &output).map_err(|e| format!("{e:#}"));
         let _ = tx.send(Msg::RecoverDone(Box::new(r)));
     });
 }
@@ -807,7 +810,8 @@ pub fn export(app: &mut App) {
 
     let tx = app.tx.clone();
     std::thread::spawn(move || {
-        let r = run_export(&spec, &results, floor, &output, &operator).map_err(|e| format!("{e:#}"));
+        let r =
+            run_export(&spec, &results, floor, &output, &operator).map_err(|e| format!("{e:#}"));
         let _ = tx.send(Msg::RecoverExported(Box::new(r)));
     });
 }
@@ -820,21 +824,16 @@ fn run_export(
     operator: &str,
 ) -> anyhow::Result<Exported> {
     let mut source = spec.open()?;
-    if source.size() != results.source_size {
-        anyhow::bail!(
-            "the source is {} bytes but the scan read {} bytes. Every offset in the results \
-             would point at the wrong data; refusing to export.",
-            source.size(),
-            results.source_size
-        );
-    }
+    // The same guard the CLI uses, from the same function. A second
+    // implementation of "is this the right disk" is exactly what this module
+    // must not have.
+    recover::export::check_source_matches(source.as_mut(), results)?;
     let selected: Vec<&RecoveredFile> = results
         .files
         .iter()
         .filter(|f| f.confidence() >= floor)
         .collect();
-    let report =
-        recover::export::export(source.as_mut(), results, &selected, output, operator)?;
+    let report = recover::export::export(source.as_mut(), results, &selected, output, operator)?;
     Ok(Exported {
         output: report.output_dir,
         exported: report.exported.len(),
@@ -1101,7 +1100,12 @@ fn render_config(frame: &mut Frame, area: Rect, app: &mut App) {
         let focused = s.config_field == 3 + i;
         lines.push(Line::from(vec![
             Span::styled(
-                format!("   {} {} {:<8}", if focused { ">" } else { " " }, toggle(*on), name),
+                format!(
+                    "   {} {} {:<8}",
+                    if focused { ">" } else { " " },
+                    toggle(*on),
+                    name
+                ),
                 if focused { t.selected() } else { t.dimmed() },
             ),
             ui::dim(if name == "txt" {
@@ -1137,11 +1141,7 @@ fn toggle_line(focused: bool, mark: &str, label: &str, hint: &str) -> Line<'stat
     let t = Theme::get();
     Line::from(vec![
         Span::styled(
-            format!(
-                " {} {mark} {:<24}",
-                if focused { ">" } else { " " },
-                label
-            ),
+            format!(" {} {mark} {:<24}", if focused { ">" } else { " " }, label),
             if focused { t.selected() } else { t.dimmed() },
         ),
         ui::dim(hint.to_string()),
@@ -1172,7 +1172,11 @@ fn render_progress(frame: &mut Frame, area: Rect, app: &mut App) {
                 format!(
                     " {} {} ",
                     app.spinner(),
-                    if j.exporting { "exporting" } else { "recovering" }
+                    if j.exporting {
+                        "exporting"
+                    } else {
+                        "recovering"
+                    }
                 ),
                 t.selected(),
             ),
@@ -1310,11 +1314,14 @@ fn render_results(frame: &mut Frame, area: Rect, app: &mut App) {
         None => body.push(Line::from(ui::dim(" —"))),
         Some(f) => {
             body.push(Line::from(vec![
-                Span::styled(format!(" {} ", f.confidence().label()), match f.confidence() {
-                    Confidence::High => t.verdict(true),
-                    Confidence::Medium => Style::new().fg(t.warn),
-                    Confidence::Low => t.dimmed(),
-                }),
+                Span::styled(
+                    format!(" {} ", f.confidence().label()),
+                    match f.confidence() {
+                        Confidence::High => t.verdict(true),
+                        Confidence::Medium => Style::new().fg(t.warn),
+                        Confidence::Low => t.dimmed(),
+                    },
+                ),
                 Span::raw(f.rationale.summary.clone()),
             ]));
             if let Some(e) = &f.encrypted {
@@ -1501,6 +1508,7 @@ mod tests {
             tool_version: "0.1.0".into(),
             source: "test.img".into(),
             source_size: 1024,
+            source_fingerprint: "00".repeat(32),
             started_utc: "2026-03-01T12:00:00Z".into(),
             finished_utc: "2026-03-01T12:00:01Z".into(),
             operator: "tester".into(),

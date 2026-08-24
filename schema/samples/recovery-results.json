@@ -4,6 +4,7 @@
   "tool_version": "0.1.0",
   "source": "test-fixtures/ntfs-deleted.img",
   "source_size": 131072,
+  "source_fingerprint": "becefce9c20d5ecf77e86a91600e8d23254a70eb93b2aac45a858f0b68fdd2e8",
   "started_utc": "2026-03-01T12:00:00Z",
   "finished_utc": "2026-03-01T12:00:04Z",
   "operator": "sample-operator@lab",

@@ -234,7 +234,10 @@ pub fn carve(
             }
         }
 
-        if wanted.iter().any(|s| s.terminator == Terminator::PrintableRun) {
+        if wanted
+            .iter()
+            .any(|s| s.terminator == Terminator::PrintableRun)
+        {
             carve_text(window, read_from, base, &claimed, &mut out, progress);
         }
 
@@ -327,8 +330,7 @@ fn carve_one(
         } else {
             Check::fail(
                 "footer_found",
-                note.clone()
-                    .unwrap_or_else(|| "no terminator found".into()),
+                note.clone().unwrap_or_else(|| "no terminator found".into()),
             )
         },
     ];
@@ -342,7 +344,10 @@ fn carve_one(
             ),
         )
     } else {
-        Check::pass("within_size_cap", format!("{length} bytes, under the type cap"))
+        Check::pass(
+            "within_size_cap",
+            format!("{length} bytes, under the type cap"),
+        )
     });
     checks.push(Check::fail(
         "original_metadata",
@@ -586,9 +591,7 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
-    haystack
-        .windows(needle.len())
-        .position(|w| w == needle)
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 #[cfg(test)]
@@ -600,7 +603,13 @@ mod tests {
     fn carve_all(bytes: Vec<u8>, types: &[&str]) -> Vec<RecoveredFile> {
         let mut s = MemorySource::new(bytes, "test");
         let types: Vec<String> = types.iter().map(|t| t.to_string()).collect();
-        carve(&mut s, &types, &Progress::default(), &AtomicBool::new(false)).unwrap()
+        carve(
+            &mut s,
+            &types,
+            &Progress::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap()
     }
 
     #[test]

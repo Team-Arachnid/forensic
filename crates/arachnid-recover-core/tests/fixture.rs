@@ -85,7 +85,10 @@ fn regenerate_fixtures() {
         "regenerated: {} result(s) — {high} High, {medium} Medium, {low} Low",
         results.files.len()
     );
-    assert!(high > 0 && medium > 0 && low > 0, "the sample must show every label");
+    assert!(
+        high > 0 && medium > 0 && low > 0,
+        "the sample must show every label"
+    );
 }
 
 const FIXTURE_README: &str = "\

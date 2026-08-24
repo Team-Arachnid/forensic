@@ -195,6 +195,35 @@ impl Source for MemorySource {
     }
 }
 
+/// A cheap identity for a source, so an export can prove it is reading the same
+/// media the scan read.
+///
+/// Size alone is not enough: two images of the same disk model, or two partition
+/// images of the same size, collide trivially — and an export that reads the
+/// wrong image writes unrelated bytes into a custody log under a recovered
+/// file's name. That is a forged evidence file produced by accident, which is
+/// the worst failure this module has.
+///
+/// So the digest covers the size *and* three 4 KiB samples: head, middle and
+/// tail. Three reads, and it separates any two images that are not byte-identical
+/// in all three places. It is an identity check, not an integrity check — the
+/// custody log is what proves integrity — so it deliberately does not read the
+/// whole source, which on a multi-terabyte device would cost hours.
+pub fn fingerprint(source: &mut dyn Source) -> Result<String> {
+    use sha2::{Digest, Sha256};
+
+    const SAMPLE: usize = 4096;
+    let size = source.size();
+    let mut hasher = Sha256::new();
+    hasher.update(size.to_le_bytes());
+    for offset in [0, size / 2, size.saturating_sub(SAMPLE as u64)] {
+        let mut buf = vec![0u8; SAMPLE];
+        let n = source.read_at(offset, &mut buf)?;
+        hasher.update(&buf[..n]);
+    }
+    Ok(arachnid_evidence::hex(&hasher.finalize()))
+}
+
 // ---------------------------------------------------------------------------
 // Little-endian readers
 // ---------------------------------------------------------------------------
@@ -245,6 +274,32 @@ mod tests {
         assert_eq!(s.size(), 8);
         assert_eq!(s.read_exact_at(3, 4).unwrap(), b"defg");
         assert_eq!(s.read_at(8, &mut [0u8; 4]).unwrap(), 0);
+    }
+
+    /// Two sources of the same size that differ anywhere sampled must not share
+    /// a fingerprint. Size alone was the original check, and two same-sized
+    /// images sailed straight through it.
+    #[test]
+    fn the_fingerprint_separates_same_sized_sources() {
+        let mut a = MemorySource::new(vec![0xAA; 8192], "a");
+        let mut b = MemorySource::new(vec![0xBB; 8192], "b");
+        assert_eq!(a.size(), b.size());
+        assert_ne!(fingerprint(&mut a).unwrap(), fingerprint(&mut b).unwrap());
+
+        // Same bytes, same fingerprint: re-opening one image must still match.
+        let mut a2 = MemorySource::new(vec![0xAA; 8192], "a-reopened");
+        assert_eq!(fingerprint(&mut a).unwrap(), fingerprint(&mut a2).unwrap());
+    }
+
+    /// A difference only in the tail — a truncated image, or one image
+    /// continuing past where another stopped — must still separate them.
+    #[test]
+    fn the_fingerprint_samples_the_tail_not_just_the_head() {
+        let mut a = MemorySource::new(vec![0u8; 65536], "a");
+        let mut modified = vec![0u8; 65536];
+        *modified.last_mut().unwrap() = 1;
+        let mut b = MemorySource::new(modified, "b");
+        assert_ne!(fingerprint(&mut a).unwrap(), fingerprint(&mut b).unwrap());
     }
 
     #[test]

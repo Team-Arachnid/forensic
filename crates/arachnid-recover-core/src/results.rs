@@ -176,9 +176,7 @@ impl RecoveredFile {
     /// Display name: the original path where one survives, the generated export
     /// name otherwise.
     pub fn display_name(&self) -> &str {
-        self.original_path
-            .as_deref()
-            .unwrap_or(&self.export_name)
+        self.original_path.as_deref().unwrap_or(&self.export_name)
     }
 }
 
@@ -208,6 +206,16 @@ pub struct ScanResults {
     /// The image path or device path that was read.
     pub source: String,
     pub source_size: u64,
+    /// Identity of the media this scan read; see
+    /// [`crate::source::fingerprint`]. An export checks it before writing a
+    /// single byte, because every offset in `files` is meaningless against a
+    /// different source.
+    ///
+    /// Defaulted rather than required so an index written before this field
+    /// existed still loads; a consumer that finds it empty must say the check
+    /// did not run rather than treat it as passed.
+    #[serde(default)]
+    pub source_fingerprint: String,
     pub started_utc: String,
     pub finished_utc: String,
     pub operator: String,
@@ -257,10 +265,7 @@ impl ScanResults {
         s.push_str("Arachnid Recover — scan summary\n");
         s.push_str("===============================\n\n");
         s.push_str(&format!("Source      {}\n", self.source));
-        s.push_str(&format!(
-            "Size        {} bytes\n",
-            self.source_size
-        ));
+        s.push_str(&format!("Size        {} bytes\n", self.source_size));
         s.push_str(&format!("Operator    {}\n", self.operator));
         s.push_str(&format!("Started     {}\n", self.started_utc));
         s.push_str(&format!("Finished    {}\n", self.finished_utc));
@@ -309,7 +314,11 @@ impl ScanResults {
              Low    raw-carved: structurally valid, completeness unverified\n",
         );
 
-        let encrypted: Vec<_> = self.files.iter().filter(|f| f.encrypted.is_some()).collect();
+        let encrypted: Vec<_> = self
+            .files
+            .iter()
+            .filter(|f| f.encrypted.is_some())
+            .collect();
         if !encrypted.is_empty() {
             s.push_str(&format!(
                 "\n{} file(s) are encrypted at rest and are reported, not decrypted:\n",
@@ -355,8 +364,8 @@ pub fn filetime_to_rfc3339(ticks: u64) -> Option<String> {
 pub fn unix_to_rfc3339(secs: i64, nanos: u32) -> Option<String> {
     use time::format_description::well_known::Rfc3339;
     use time::OffsetDateTime;
-    let t = OffsetDateTime::from_unix_timestamp(secs).ok()?
-        + time::Duration::nanoseconds(nanos as i64);
+    let t =
+        OffsetDateTime::from_unix_timestamp(secs).ok()? + time::Duration::nanoseconds(nanos as i64);
     t.format(&Rfc3339).ok()
 }
 
@@ -382,6 +391,9 @@ mod tests {
 
     #[test]
     fn unix_epoch_formats() {
-        assert_eq!(unix_to_rfc3339(0, 0).as_deref(), Some("1970-01-01T00:00:00Z"));
+        assert_eq!(
+            unix_to_rfc3339(0, 0).as_deref(),
+            Some("1970-01-01T00:00:00Z")
+        );
     }
 }

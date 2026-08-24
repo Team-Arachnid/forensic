@@ -547,9 +547,15 @@ safe is reported as skipped, never written outside the output directory.
   Linux this is proven from the mount table and refused. On other platforms it
   cannot be proven cheaply, so the risk is stated loudly rather than assumed
   away — refusing on a guess would block legitimate work.
-- **An image that does not match the scan is refused at export.** If the source
-  is a different size than the results recorded, every offset in the index would
-  point at the wrong bytes.
+- **An image that does not match the scan is refused at export.** Every offset
+  in a results index is relative to one specific source; export from a different
+  one and unrelated bytes get hashed into a custody log under a recovered file's
+  name — a forged evidence file produced by accident. Size is checked first
+  because it is free, then a fingerprint over the size and three 4 KiB samples
+  (head, middle, tail), because two images of the same size collide trivially.
+  An index carrying no fingerprint exports with the caveat recorded *in the
+  custody log*, so whoever reads the container later knows the check did not
+  run.
 - **Encrypted files are reported, not attacked.** EFS-encrypted `$DATA`, ext4
   per-file encryption and FileVault volumes are identified and labelled. No key
   recovery, password guessing or brute force of any kind exists in this module,

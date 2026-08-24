@@ -125,10 +125,7 @@ pub mod ntfs {
                 vec![
                     standard_information(),
                     file_name(REC_DIR, "quarterly.pdf", 3),
-                    data_nonresident(
-                        &runlist(&[(1, LCN_LIVE as i64)]),
-                        live_data.len() as u64,
-                    ),
+                    data_nonresident(&runlist(&[(1, LCN_LIVE as i64)]), live_data.len() as u64),
                 ],
             ),
         );
@@ -181,8 +178,7 @@ pub mod ntfs {
         img[3..11].copy_from_slice(b"NTFS    ");
         img[0x0B..0x0D].copy_from_slice(&(BYTES_PER_SECTOR as u16).to_le_bytes());
         img[0x0D] = SECTORS_PER_CLUSTER as u8;
-        img[0x28..0x30]
-            .copy_from_slice(&((CLUSTERS * SECTORS_PER_CLUSTER) as u64).to_le_bytes());
+        img[0x28..0x30].copy_from_slice(&((CLUSTERS * SECTORS_PER_CLUSTER) as u64).to_le_bytes());
         img[0x30..0x38].copy_from_slice(&(MFT_LCN as u64).to_le_bytes());
         // Negative means 2^-n bytes per record: -10 gives 1024.
         img[0x38] = (-10i8) as u8;

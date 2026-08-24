@@ -20,10 +20,7 @@ const TILES: [(AppScreen, &str); 7] = [
     (AppScreen::Parse, "analyse an existing PCAP"),
     (AppScreen::Verify, "verify an evidence container"),
     (AppScreen::Report, "render a container's report"),
-    (
-        AppScreen::Recover,
-        "recover deleted files — read-only scan",
-    ),
+    (AppScreen::Recover, "recover deleted files — read-only scan"),
     (
         AppScreen::Sanitize,
         "securely erase a device — destroys data",
@@ -287,9 +284,11 @@ fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>);
                 vec![
                     Line::styled(
                         format!("{} recovered", r.files.len()),
-                        t.verdict(r.files.iter().any(|f| {
-                            f.confidence() != arachnid_recover_core::Confidence::Low
-                        })),
+                        t.verdict(
+                            r.files
+                                .iter()
+                                .any(|f| f.confidence() != arachnid_recover_core::Confidence::Low),
+                        ),
                     ),
                     Line::from(ui::dim(format!("{high} High  {medium} Med  {low} Low"))),
                     Line::from(ui::dim(ui::ellipsis(&r.source, cell))),

@@ -221,7 +221,10 @@ fn decode_runs(bytes: &[u8]) -> (Vec<Run>, Option<String>) {
 
         lcn += delta;
         if lcn < 0 {
-            return (runs, Some("run list points before the start of the volume".into()));
+            return (
+                runs,
+                Some("run list points before the start of the volume".into()),
+            );
         }
         runs.push(Run {
             lcn: Some(lcn as u64),
@@ -334,7 +337,10 @@ fn parse_record(buf: &[u8], number: u64) -> Result<Option<Record>> {
                     let (runs, run_problem) = if runs_at < attr_len {
                         decode_runs(&buf[at + runs_at..at + attr_len])
                     } else {
-                        (Vec::new(), Some("run list offset past the attribute".into()))
+                        (
+                            Vec::new(),
+                            Some("run list offset past the attribute".into()),
+                        )
                     };
                     DataAttr {
                         resident: None,
@@ -400,11 +406,7 @@ pub struct Scan {
 ///
 /// `deleted_only` restricts results to records whose in-use bit is clear, which
 /// is the usual reason to run this: live files are readable through the OS.
-pub fn recover(
-    source: &mut dyn Source,
-    geometry: &Geometry,
-    deleted_only: bool,
-) -> Result<Scan> {
+pub fn recover(source: &mut dyn Source, geometry: &Geometry, deleted_only: bool) -> Result<Scan> {
     let record_size = geometry.record_size as usize;
     let sector = geometry.bytes_per_sector as usize;
 
@@ -499,7 +501,9 @@ pub fn recover(
         if deleted_only && rec.in_use {
             continue;
         }
-        let Some(name) = rec.best_name() else { continue };
+        let Some(name) = rec.best_name() else {
+            continue;
+        };
         let Some(data) = &rec.data else { continue };
 
         if data.flags & FLAG_COMPRESSED != 0 {
@@ -586,7 +590,10 @@ fn assemble(
         // export from the record; see `crate::export`.
         checks.push(Check::pass(
             "data_resident",
-            format!("{} byte(s) stored inside the MFT record itself", bytes.len()),
+            format!(
+                "{} byte(s) stored inside the MFT record itself",
+                bytes.len()
+            ),
         ));
     } else {
         for run in &data.runs {
@@ -613,7 +620,10 @@ fn assemble(
     } else if data.resident.is_none() {
         checks.push(Check::pass(
             "run_list_complete",
-            format!("{} run(s) decoded to the declared end of the file", data.runs.len()),
+            format!(
+                "{} run(s) decoded to the declared end of the file",
+                data.runs.len()
+            ),
         ));
     }
 
@@ -667,7 +677,10 @@ fn assemble(
     } else if unreadable > 0 {
         Check::fail(
             "extents_readable",
-            format!("{unreadable} of {} extent(s) would not read back", extents.len()),
+            format!(
+                "{unreadable} of {} extent(s) would not read back",
+                extents.len()
+            ),
         )
     } else if extents.is_empty() && data.resident.is_none() {
         Check::fail("extents_readable", "the file has no readable allocation")
@@ -775,7 +788,8 @@ mod tests {
         // 0x11 0x08 0xF0       -> 8 clusters at LCN 0x1234 - 16
         // 0x01 0x04            -> a 4-cluster sparse hole
         // 0x00                 -> end
-        let (runs, problem) = decode_runs(&[0x21, 0x18, 0x34, 0x12, 0x11, 0x08, 0xF0, 0x01, 0x04, 0x00]);
+        let (runs, problem) =
+            decode_runs(&[0x21, 0x18, 0x34, 0x12, 0x11, 0x08, 0xF0, 0x01, 0x04, 0x00]);
         assert!(problem.is_none());
         assert_eq!(runs.len(), 3);
         assert_eq!(runs[0].lcn, Some(0x1234));

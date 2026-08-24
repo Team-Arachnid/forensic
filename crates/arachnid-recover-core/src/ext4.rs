@@ -218,7 +218,9 @@ fn walk_extents(
     let entries = u16le(node, 2).unwrap_or(0) as usize;
     let depth = u16le(node, 6).unwrap_or(0);
     if depth > MAX_EXTENT_DEPTH || depth_budget == 0 {
-        problems.push(format!("extent tree deeper than {MAX_EXTENT_DEPTH} levels; refusing to follow it"));
+        problems.push(format!(
+            "extent tree deeper than {MAX_EXTENT_DEPTH} levels; refusing to follow it"
+        ));
         return;
     }
 
@@ -281,13 +283,20 @@ fn read_directory(source: &mut dyn Source, sb: &Superblock, inode: &Inode) -> Ve
     let mut extents = Vec::new();
     let mut problems = Vec::new();
     if inode.flags & INODE_FLAG_EXTENTS != 0 {
-        walk_extents(source, sb, &inode.block, MAX_EXTENT_DEPTH, &mut extents, &mut problems);
+        walk_extents(
+            source,
+            sb,
+            &inode.block,
+            MAX_EXTENT_DEPTH,
+            &mut extents,
+            &mut problems,
+        );
     }
 
     for (_, physical, len) in extents {
         for b in 0..len {
-            let Ok(block) = source
-                .read_exact_at(sb.block_offset(physical + b), sb.block_size as usize)
+            let Ok(block) =
+                source.read_exact_at(sb.block_offset(physical + b), sb.block_size as usize)
             else {
                 continue;
             };
@@ -385,7 +394,9 @@ pub fn recover(source: &mut dyn Source, sb: &Superblock, deleted_only: bool) -> 
     for g in 0..groups {
         let at = sb.block_offset(gd_block) + (g as u64 * sb.desc_size as u64);
         let Ok(gd) = source.read_exact_at(at, sb.desc_size as usize) else {
-            notes.push(format!("group descriptor {g} is unreadable; that group was skipped"));
+            notes.push(format!(
+                "group descriptor {g} is unreadable; that group was skipped"
+            ));
             inode_tables.push(None);
             continue;
         };
@@ -471,7 +482,9 @@ pub fn recover(source: &mut dyn Source, sb: &Superblock, deleted_only: bool) -> 
             inode,
             path,
             Method::Ext4Inode,
-            names.get(&inode.number).is_some_and(|(_, orphaned)| *orphaned),
+            names
+                .get(&inode.number)
+                .is_some_and(|(_, orphaned)| *orphaned),
         ));
     }
 
@@ -573,9 +586,19 @@ fn assemble(
     let mut problems = Vec::new();
     let mut triples = Vec::new();
     if inode.flags & INODE_FLAG_EXTENTS != 0 {
-        walk_extents(source, sb, &inode.block, MAX_EXTENT_DEPTH, &mut triples, &mut problems);
+        walk_extents(
+            source,
+            sb,
+            &inode.block,
+            MAX_EXTENT_DEPTH,
+            &mut triples,
+            &mut problems,
+        );
     } else if inode.flags & INODE_FLAG_INLINE != 0 {
-        problems.push("the file's data is stored inline in the inode, which this build does not extract".into());
+        problems.push(
+            "the file's data is stored inline in the inode, which this build does not extract"
+                .into(),
+        );
     } else {
         problems.push(
             "the inode carries an ext2/ext3 indirect block map rather than an extent tree; \
@@ -648,7 +671,10 @@ fn assemble(
     } else if unreadable > 0 {
         Check::fail(
             "extents_readable",
-            format!("{unreadable} of {} extent(s) would not read back", extents.len()),
+            format!(
+                "{unreadable} of {} extent(s) would not read back",
+                extents.len()
+            ),
         )
     } else if extents.is_empty() {
         Check::fail("extents_readable", "the inode maps no readable blocks")
@@ -751,7 +777,8 @@ fn journal_inodes(
     // The journal is an ordinary file; its inode says where it lives.
     let group = (sb.journal_inum - 1) / sb.inodes_per_group;
     let index = (sb.journal_inum - 1) % sb.inodes_per_group;
-    let gd_at = sb.block_offset(sb.first_data_block as u64 + 1) + group as u64 * sb.desc_size as u64;
+    let gd_at =
+        sb.block_offset(sb.first_data_block as u64 + 1) + group as u64 * sb.desc_size as u64;
     let gd = source
         .read_exact_at(gd_at, sb.desc_size as usize)
         .context("read the journal's group descriptor")?;
@@ -774,7 +801,14 @@ fn journal_inodes(
 
     let mut triples = Vec::new();
     let mut problems = Vec::new();
-    walk_extents(source, sb, &journal.block, MAX_EXTENT_DEPTH, &mut triples, &mut problems);
+    walk_extents(
+        source,
+        sb,
+        &journal.block,
+        MAX_EXTENT_DEPTH,
+        &mut triples,
+        &mut problems,
+    );
     triples.sort_by_key(|(logical, _, _)| *logical);
     if triples.is_empty() {
         bail!("the journal inode maps no blocks");
@@ -831,9 +865,7 @@ fn journal_inodes(
         else {
             break;
         };
-        if u32be(&block, 0) != Some(JBD2_MAGIC)
-            || u32be(&block, 4) != Some(JBD2_DESCRIPTOR_BLOCK)
-        {
+        if u32be(&block, 0) != Some(JBD2_MAGIC) || u32be(&block, 4) != Some(JBD2_DESCRIPTOR_BLOCK) {
             i += 1;
             continue;
         }
@@ -998,7 +1030,7 @@ mod tests {
         node[0..2].copy_from_slice(&EXTENT_MAGIC.to_le_bytes());
         node[2..4].copy_from_slice(&2u16.to_le_bytes());
         node[6..8].copy_from_slice(&0u16.to_le_bytes()); // depth 0
-        // extent 0: logical 0, 4 blocks at physical 100
+                                                         // extent 0: logical 0, 4 blocks at physical 100
         node[12..16].copy_from_slice(&0u32.to_le_bytes());
         node[16..18].copy_from_slice(&4u16.to_le_bytes());
         node[20..24].copy_from_slice(&100u32.to_le_bytes());
@@ -1022,7 +1054,14 @@ mod tests {
         let mut source = crate::source::MemorySource::new(vec![0u8; 1024], "t");
         let mut out = Vec::new();
         let mut problems = Vec::new();
-        walk_extents(&mut source, &sb, &node, MAX_EXTENT_DEPTH, &mut out, &mut problems);
+        walk_extents(
+            &mut source,
+            &sb,
+            &node,
+            MAX_EXTENT_DEPTH,
+            &mut out,
+            &mut problems,
+        );
         assert_eq!(out, vec![(0, 100, 4), (4, 200, 2)]);
         assert!(problems[0].contains("preallocated"));
     }

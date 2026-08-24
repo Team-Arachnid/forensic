@@ -866,6 +866,13 @@ parsers and the carver read through has no write method, so there is no code
 path in the module that could. Device handles are opened read-only, so the
 kernel refuses a write even if one were somehow issued.
 
+**It will not export from a different image than it scanned.** Every offset in
+a results index is relative to one specific source, so exporting from the wrong
+one would hash unrelated bytes into a custody log under a recovered file's name.
+Size is checked, then a fingerprint over the size and three 4 KiB samples — the
+two images in `test-fixtures/` are the same size, which is exactly why size
+alone is not enough. A refused export creates nothing.
+
 **It will not put recovery output on the device being recovered from.** That is
 the mistake that quietly destroys a case: every byte written there lands in the
 unallocated space the recovery is reading out of. On Linux this is proven from

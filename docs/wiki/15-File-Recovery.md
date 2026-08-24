@@ -480,9 +480,36 @@ On other platforms it cannot be proven cheaply, so the risk is stated loudly
 instead. Refusing on a guess would block legitimate work; staying silent would
 let a real one through.
 
-**3. An image that does not match the scan is refused at export.** If the source
-is a different size than the results recorded, every offset in the index would
-point at the wrong bytes.
+**3. An image that does not match the scan is refused at export.** Every offset
+in a results index is relative to one specific source. Export from a different
+one and the bytes written are unrelated data — hashed into a custody log, filed
+under a recovered file's name, and indistinguishable from a real recovery
+afterwards.
+
+Size is checked first because it is free. Then `source_fingerprint`, a SHA-256
+over the size and three 4 KiB samples — head, middle and tail — because two
+images of the same size collide trivially. (The two images in `test-fixtures/`
+are both exactly 131072 bytes, which is how the size-only check was caught; there
+is a regression test named after it.)
+
+```
+REFUSED: this is not the source the scan read: fingerprint 4a6fe2b4… does not
+match the recorded becefce9…. The two are the same size, which is exactly why
+size alone is not enough. Refusing to export.
+```
+
+The refusal happens before the output directory is created, so a rejected export
+leaves nothing behind. An index carrying no fingerprint — one written before the
+field existed — still exports, with the caveat written **into the custody log**:
+
+```
+source identity NOT verified: the results carry no source fingerprint, so this
+export could only confirm the size matches — not that this is the same media the
+scan read
+```
+
+Whoever reads the container later is the person who needs to know that, so it
+goes somewhere permanent rather than only onto the operator's terminal.
 
 **4. Encrypted files are reported, not attacked.** See
 [Not in scope](#not-in-scope).
@@ -565,9 +592,14 @@ rather than hand-written, so it cannot drift from real output — lives at
 `schema/samples/recovery-summary.txt`.
 
 Top level: `schema_version` · `tool` · `tool_version` · `source` ·
-`source_size` · `started_utc` · `finished_utc` · `operator` ·
-`filesystem_pass` · `carve_pass` · `carve_types` · `filesystems` · `files` ·
-`problems`.
+`source_size` · `source_fingerprint` · `started_utc` · `finished_utc` ·
+`operator` · `filesystem_pass` · `carve_pass` · `carve_types` · `filesystems` ·
+`files` · `problems`.
+
+`source_fingerprint` identifies the media the offsets in `files` are relative
+to; see [The safety rails](#the-safety-rails). It defaults to empty so an older
+index still loads — a consumer that finds it empty must report that the check
+did not run, never that it passed.
 
 Each entry in `files`: `id` · `method` · `original_path` (absent for carved
 results — it does not exist, and none is invented) · `export_name` ·

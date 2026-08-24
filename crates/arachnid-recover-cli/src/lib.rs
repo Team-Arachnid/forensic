@@ -336,7 +336,10 @@ fn same_media(device: &str, resolved: &Path, output: &Path) -> Result<Option<Str
             continue;
         }
         // Keep the longest matching mount point: /mnt/case beats /.
-        if offending.as_ref().is_none_or(|(_, p)| point.len() > p.len()) {
+        if offending
+            .as_ref()
+            .is_none_or(|(_, p)| point.len() > p.len())
+        {
             offending = Some((src.to_string(), point));
         }
     }
@@ -408,14 +411,12 @@ fn cmd_carve(cli: &Cli, a: &CarveArgs) -> Result<u8> {
     scan_and_write(cli, &a.input, &a.output, options)
 }
 
-fn scan_and_write(
-    cli: &Cli,
-    input: &Path,
-    output: &Path,
-    options: ScanOptions,
-) -> Result<u8> {
+fn scan_and_write(cli: &Cli, input: &Path, output: &Path, options: ScanOptions) -> Result<u8> {
     for t in &options.carve_types {
-        if !carve::known_types().iter().any(|k| k.eq_ignore_ascii_case(t)) {
+        if !carve::known_types()
+            .iter()
+            .any(|k| k.eq_ignore_ascii_case(t))
+        {
             bail!(
                 "unknown carve type {t:?}. Known types: {}",
                 carve::known_types().join(", ")
@@ -478,7 +479,10 @@ fn scan_and_write(
 
 /// Degraded when the scan left something out; success otherwise.
 fn outcome_code(results: &ScanResults) -> u8 {
-    let unsupported = results.filesystems.iter().any(|f| !f.unsupported.is_empty());
+    let unsupported = results
+        .filesystems
+        .iter()
+        .any(|f| !f.unsupported.is_empty());
     if !results.problems.is_empty() || unsupported {
         exit::DEGRADED
     } else {
@@ -626,30 +630,24 @@ fn cmd_export(cli: &Cli, a: &ExportArgs) -> Result<u8> {
             source_path.display()
         )
     })?;
-    // The results index records the source size. A different size means a
-    // different image, and every offset in the index would then point at the
-    // wrong bytes.
-    if source.size() != results.source_size {
-        bail!(
-            "{} is {} bytes but the results were scanned from a {} byte source. Every offset in \
-             the index would point at the wrong data; refusing to export.",
-            source_path.display(),
-            source.size(),
-            results.source_size
-        );
+    // Refused here rather than after the container exists, so a rejected export
+    // leaves nothing behind. `export` checks again; this is only so the refusal
+    // carries the exit code a rail refusal should.
+    match export::check_source_matches(source.as_mut(), &results) {
+        Ok(Some(warning)) => eprintln!("WARNING: {warning}"),
+        Ok(None) => {}
+        Err(refusal) => {
+            tracing::error!("{refusal:#}");
+            eprintln!("REFUSED: {refusal:#}");
+            return Ok(exit::REFUSED);
+        }
     }
 
     let operator = a
         .operator
         .clone()
         .unwrap_or_else(|| results.operator.clone());
-    let report = export::export(
-        source.as_mut(),
-        &results,
-        &selected,
-        &a.output,
-        &operator,
-    )?;
+    let report = export::export(source.as_mut(), &results, &selected, &a.output, &operator)?;
 
     if cli.json {
         println!(
@@ -670,7 +668,10 @@ fn cmd_export(cli: &Cli, a: &ExportArgs) -> Result<u8> {
         for (id, why) in &report.skipped {
             println!("  skipped {id}: {why}");
         }
-        println!("Chain of custody: {}", report.container.join("custody.log").display());
+        println!(
+            "Chain of custody: {}",
+            report.container.join("custody.log").display()
+        );
         println!("Signing key SHA-256: {}", report.key_fingerprint);
         println!(
             "\nRecord that fingerprint out of band. Re-check the export at any time with:\n  \
@@ -702,9 +703,11 @@ mod tests {
     /// exists for devices.
     #[test]
     fn an_image_source_never_trips_the_output_rail() {
-        assert!(check_output_not_on_source(Path::new("disk.img"), Path::new("/tmp/out"))
-            .unwrap()
-            .is_none());
+        assert!(
+            check_output_not_on_source(Path::new("disk.img"), Path::new("/tmp/out"))
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

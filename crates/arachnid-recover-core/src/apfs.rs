@@ -82,7 +82,9 @@ pub fn probe(source: &mut dyn Source, base: u64) -> Result<Option<Container>> {
     // A block size that is not a sane power of two would turn the scan below
     // into a walk off the end of the source.
     if !(512..=65536).contains(&block_size) || !block_size.is_power_of_two() {
-        anyhow::bail!("APFS container at offset {base} declares an impossible block size {block_size}");
+        anyhow::bail!(
+            "APFS container at offset {base} declares an impossible block size {block_size}"
+        );
     }
 
     let mut container = Container {
@@ -109,10 +111,13 @@ pub fn probe(source: &mut dyn Source, base: u64) -> Result<Option<Container>> {
 /// heuristic, and it is bounded — both facts are reported, not buried.
 fn scan_volumes(source: &mut dyn Source, container: &Container) -> Result<(Vec<Volume>, bool)> {
     let block_size = container.block_size as u64;
-    let limit = source
-        .size()
-        .min(container.base + SCAN_LIMIT_BYTES)
-        .min(container.base + container.block_count.saturating_mul(block_size).max(block_size));
+    let limit = source.size().min(container.base + SCAN_LIMIT_BYTES).min(
+        container.base
+            + container
+                .block_count
+                .saturating_mul(block_size)
+                .max(block_size),
+    );
     let truncated = limit < container.base + container.block_count.saturating_mul(block_size);
 
     let mut volumes = Vec::new();

@@ -138,6 +138,21 @@ pub fn scan(
     let mut files = Vec::new();
     let mut problems = Vec::new();
 
+    // Taken before any pass runs, so it identifies the media the offsets below
+    // are relative to. A failure here is recorded rather than fatal: a scan of
+    // damaged media is still worth having, and the export-time check reports an
+    // absent fingerprint as "not verified" rather than as a match.
+    let source_fingerprint = match source::fingerprint(source) {
+        Ok(fp) => fp,
+        Err(e) => {
+            problems.push(format!(
+                "could not fingerprint the source ({e:#}); an export from these results cannot \
+                 confirm it is reading the same media"
+            ));
+            String::new()
+        }
+    };
+
     if options.filesystem_pass {
         progress.phase.store(1, Ordering::Relaxed);
         for offset in PROBE_OFFSETS {
@@ -201,6 +216,7 @@ pub fn scan(
         tool_version: env!("CARGO_PKG_VERSION").into(),
         source: source.label(),
         source_size: source.size(),
+        source_fingerprint,
         started_utc: started,
         finished_utc: arachnid_evidence::now_utc(),
         operator: options.operator.clone(),
@@ -220,7 +236,11 @@ pub fn scan(
 type Identified = (FilesystemReport, Vec<RecoveredFile>);
 
 /// Identify whatever filesystem is at `offset` and recover from it.
-fn identify(source: &mut dyn Source, offset: u64, deleted_only: bool) -> Result<Option<Identified>> {
+fn identify(
+    source: &mut dyn Source,
+    offset: u64,
+    deleted_only: bool,
+) -> Result<Option<Identified>> {
     if let Some(geometry) = ntfs::probe(source, offset)? {
         tracing::info!(offset, "NTFS volume identified");
         let scan = ntfs::recover(source, &geometry, deleted_only)?;
@@ -334,7 +354,13 @@ mod tests {
             carve_types: vec!["jpg".into()],
             ..Default::default()
         };
-        let r = scan(&mut s, &options, &Progress::default(), &AtomicBool::new(false)).unwrap();
+        let r = scan(
+            &mut s,
+            &options,
+            &Progress::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
         assert_eq!(r.files.len(), 1);
         assert_eq!(r.files[0].confidence(), Confidence::Low);
         assert_eq!(r.counts(), (0, 0, 1));
@@ -353,7 +379,13 @@ mod tests {
             carve_types: vec!["jpg".into()],
             ..Default::default()
         };
-        let r = scan(&mut s, &options, &Progress::default(), &AtomicBool::new(false)).unwrap();
+        let r = scan(
+            &mut s,
+            &options,
+            &Progress::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
 
         let json = serde_json::to_vec_pretty(&r).unwrap();
         let back: ScanResults = serde_json::from_slice(&json).unwrap();
@@ -369,7 +401,13 @@ mod tests {
     fn cancellation_is_recorded_rather_than_silently_truncating() {
         let mut s = MemorySource::new(vec![0u8; 4096], "x");
         let cancel = AtomicBool::new(true);
-        let r = scan(&mut s, &ScanOptions::default(), &Progress::default(), &cancel).unwrap();
+        let r = scan(
+            &mut s,
+            &ScanOptions::default(),
+            &Progress::default(),
+            &cancel,
+        )
+        .unwrap();
         assert!(r.problems.iter().any(|p| p.contains("cancelled")));
     }
 }

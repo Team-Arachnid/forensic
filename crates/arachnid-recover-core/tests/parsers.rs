@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicBool;
 
 use arachnid_recover_core::results::{Confidence, Method};
 use arachnid_recover_core::source::MemorySource;
-use arachnid_recover_core::{export, scan, Progress, ScanOptions};
+use arachnid_recover_core::{export, scan, Progress, ScanOptions, Source};
 
 fn ntfs_scan(deleted_only: bool) -> arachnid_recover_core::ScanResults {
     let mut source = MemorySource::new(common::ntfs::image(), "ntfs-fixture.img");
@@ -21,7 +21,13 @@ fn ntfs_scan(deleted_only: bool) -> arachnid_recover_core::ScanResults {
         operator: "tester@ci".into(),
         ..Default::default()
     };
-    scan(&mut source, &options, &Progress::default(), &AtomicBool::new(false)).unwrap()
+    scan(
+        &mut source,
+        &options,
+        &Progress::default(),
+        &AtomicBool::new(false),
+    )
+    .unwrap()
 }
 
 fn ext4_scan(deleted_only: bool) -> arachnid_recover_core::ScanResults {
@@ -33,7 +39,13 @@ fn ext4_scan(deleted_only: bool) -> arachnid_recover_core::ScanResults {
         operator: "tester@ci".into(),
         ..Default::default()
     };
-    scan(&mut source, &options, &Progress::default(), &AtomicBool::new(false)).unwrap()
+    scan(
+        &mut source,
+        &options,
+        &Progress::default(),
+        &AtomicBool::new(false),
+    )
+    .unwrap()
 }
 
 // ---------------------------------------------------------------------------
@@ -54,9 +66,15 @@ fn ntfs_is_identified_and_the_deleted_file_recovered_with_its_path() {
     assert_eq!(deleted.method, Method::NtfsMft);
     assert!(deleted.deleted);
     // The whole point of the metadata path: the original path comes back.
-    assert_eq!(deleted.original_path.as_deref(), Some("Cases/evidence-photo.jpg"));
+    assert_eq!(
+        deleted.original_path.as_deref(),
+        Some("Cases/evidence-photo.jpg")
+    );
     assert_eq!(deleted.file_type, "jpg");
-    assert_eq!(deleted.modified_utc.as_deref(), Some("2026-03-01T12:00:00Z"));
+    assert_eq!(
+        deleted.modified_utc.as_deref(),
+        Some("2026-03-01T12:00:00Z")
+    );
     assert_eq!(deleted.extents.len(), 1);
     assert_eq!(
         deleted.extents[0].offset,
@@ -117,7 +135,10 @@ fn an_unrebuildable_path_says_so_rather_than_inventing_one() {
         .iter()
         .find(|f| f.export_name == "orphan.txt")
         .expect("the orphaned file");
-    assert_eq!(orphan.original_path.as_deref(), Some("<unknown>/orphan.txt"));
+    assert_eq!(
+        orphan.original_path.as_deref(),
+        Some("<unknown>/orphan.txt")
+    );
 }
 
 /// NTFS's own metadata files are not user data; recovering them as files would
@@ -215,11 +236,7 @@ fn every_confidence_label_is_reachable_and_justified() {
                 "{} carries a label with no checks behind it",
                 f.id
             );
-            assert!(
-                !f.rationale.summary.is_empty(),
-                "{} has no summary",
-                f.id
-            );
+            assert!(!f.rationale.summary.is_empty(), "{} has no summary", f.id);
             // High means nothing failed; anything less must name a failure.
             match f.confidence() {
                 Confidence::High => assert!(
@@ -251,7 +268,10 @@ fn every_confidence_label_is_reachable_and_justified() {
         &AtomicBool::new(false),
     )
     .unwrap();
-    assert!(!carved.files.is_empty(), "the carver found nothing to score");
+    assert!(
+        !carved.files.is_empty(),
+        "the carver found nothing to score"
+    );
     for f in &carved.files {
         seen.insert(f.confidence());
     }
@@ -301,6 +321,60 @@ fn exported_files_are_the_real_bytes_and_the_container_verifies() {
     assert!(v.ok(), "custody problems: {:?}", v.problems);
 }
 
+/// The regression that motivated the fingerprint. Both fixtures are exactly
+/// 131072 bytes, so a size-only guard let an export read the *wrong* image and
+/// write unrelated bytes into a custody log under a recovered file's name.
+#[test]
+fn exporting_from_a_different_image_of_the_same_size_is_refused() {
+    let results = ntfs_scan(false);
+    let mut wrong = MemorySource::new(common::ext4::image(), "ext4-fixture.img");
+    assert_eq!(
+        wrong.size(),
+        results.source_size,
+        "the fixtures must stay the same size or this test proves nothing"
+    );
+
+    let err = export::check_source_matches(&mut wrong, &results)
+        .expect_err("a different image of the same size must be refused");
+    assert!(
+        err.to_string().contains("not the source the scan read"),
+        "{err}"
+    );
+
+    // And the right one is accepted, with no caveat.
+    let mut right = MemorySource::new(common::ntfs::image(), "ntfs-fixture.img");
+    assert_eq!(
+        export::check_source_matches(&mut right, &results).unwrap(),
+        None
+    );
+}
+
+/// An index with no fingerprint must not read as "verified". The check did not
+/// run, and the caveat has to reach both the operator and the custody log.
+#[test]
+fn a_missing_fingerprint_is_reported_as_unverified_not_as_a_match() {
+    let mut results = ntfs_scan(false);
+    results.source_fingerprint = String::new();
+    let mut source = MemorySource::new(common::ntfs::image(), "ntfs-fixture.img");
+
+    let caveat = export::check_source_matches(&mut source, &results)
+        .unwrap()
+        .expect("an absent fingerprint must produce a caveat");
+    assert!(caveat.contains("no source fingerprint"), "{caveat}");
+
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("export");
+    let selected: Vec<_> = results.files.iter().collect();
+    export::export(&mut source, &results, &selected, &out, "tester@ci").unwrap();
+
+    let log = std::fs::read_to_string(out.join("custody.log")).unwrap();
+    assert!(
+        log.contains("source identity NOT verified"),
+        "the custody log does not record that the source was never confirmed"
+    );
+    assert!(arachnid_evidence::verify(&out).unwrap().ok());
+}
+
 /// Filesystem results keep their directory structure; carved results are flat
 /// and must not be given one they never had.
 #[test]
@@ -316,7 +390,9 @@ fn carved_and_recovered_files_land_in_separate_trees() {
         .exported
         .iter()
         .all(|e| e.path.starts_with("recovered/")));
-    assert!(out.join("artifacts/recovered/Cases/quarterly.pdf").is_file());
+    assert!(out
+        .join("artifacts/recovered/Cases/quarterly.pdf")
+        .is_file());
 }
 
 /// The carving pass finds the same photo through its bytes alone. The two
@@ -338,7 +414,11 @@ fn carving_finds_the_same_file_without_its_identity() {
     )
     .unwrap();
 
-    let jpg = r.files.iter().find(|f| f.file_type == "jpg").expect("a jpeg");
+    let jpg = r
+        .files
+        .iter()
+        .find(|f| f.file_type == "jpg")
+        .expect("a jpeg");
     assert_eq!(jpg.method, Method::SignatureCarve);
     assert_eq!(jpg.confidence(), Confidence::Low);
     assert!(jpg.original_path.is_none());
