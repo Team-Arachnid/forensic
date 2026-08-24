@@ -1,0 +1,19 @@
+[package]
+name = "arachnid-cli"
+description = "Arachnid Forensic: one entry point for triage, network forensics and secure erasure."
+version.workspace = true
+edition.workspace = true
+# Follows the TUI and Sanitize floors, since it links both.
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "arachnid-cli"
+path = "src/main.rs"
+
+[dependencies]
+arachnid-core-cli.workspace = true
+arachnid-core-tui.workspace = true
+arachnid-sanitize-cli.workspace = true

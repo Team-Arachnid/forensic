@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/arachnid-cli",
     "crates/arachnid-core-cli",
     "crates/arachnid-core-tui",
     "crates/arachnid-collect",
@@ -28,9 +29,12 @@ time = { version = "0.3", features = ["formatting", "parsing"] }
 tracing = "0.1"
 
 arachnid-collect = { path = "crates/arachnid-collect", version = "0.1.0" }
+arachnid-core-cli = { path = "crates/arachnid-core-cli", version = "0.1.0" }
+arachnid-core-tui = { path = "crates/arachnid-core-tui", version = "0.1.0" }
 arachnid-evidence = { path = "crates/arachnid-evidence", version = "0.1.0" }
 arachnid-netcap = { path = "crates/arachnid-netcap", version = "0.1.0" }
 arachnid-report = { path = "crates/arachnid-report", version = "0.1.0" }
+arachnid-sanitize-cli = { path = "crates/arachnid-sanitize-cli", version = "0.1.0" }
 arachnid-sanitize-core = { path = "crates/arachnid-sanitize-core", version = "0.1.0" }
 
 # Single static binary per platform; see README "Build".

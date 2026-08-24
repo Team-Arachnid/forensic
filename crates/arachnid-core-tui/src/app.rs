@@ -200,6 +200,10 @@ impl LogBuf {
     pub fn len(&self) -> usize {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl io::Write for LogBuf {
