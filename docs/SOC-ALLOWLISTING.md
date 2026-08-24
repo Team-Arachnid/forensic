@@ -16,11 +16,14 @@ This document tells you exactly what the binary touches so you can write a
 narrow allow rule instead of a broad one. Nothing here is marketing: if a
 behaviour is not on this page, it is a bug, and we want the report.
 
-> **Two binaries, two decisions.** `arachnid-core` (and `arachnid-tui`) are
-> read-only against the target. `arachnid-sanitize` **destroys data on raw
-> block devices** and should be assessed separately — see
-> [§4a](#4a-arachnid-sanitize-raw-device-writes). Allowlisting one does not
-> imply the other, and for most sites it should not.
+> **Three binaries, two decisions.** `arachnid-core`, `arachnid-recover` and
+> `arachnid-tui` are read-only against the target — `arachnid-recover` opens raw
+> devices, but read-only, and cannot write to one (see
+> [§4b](#4b-arachnid-recover-raw-device-reads)). `arachnid-sanitize` **destroys
+> data on raw block devices** and should be assessed separately — see
+> [§4a](#4a-arachnid-sanitize-raw-device-writes). Allowlisting the read-only
+> tools does not imply allowlisting the destructive one, and for most sites it
+> should not.
 
 ---
 
@@ -122,6 +125,10 @@ including not creating the container directory. Use it to validate a rule.
 > to raw block devices and is covered in [§4a](#4a-arachnid-sanitize-raw-device-writes)
 > below. If you are allowlisting the suite, read that section — a rule scoped to
 > `arachnid-core` does not describe it.
+>
+> `arachnid-recover` also touches raw devices, but only to **read** them, and it
+> writes far more output than `arachnid-core` does. See
+> [§4b](#4b-arachnid-recover-raw-device-reads).
 
 ---
 
@@ -176,6 +183,8 @@ and outcome of every run, and the certificate register is an independent,
 tamper-evident record of every *completed* wipe. Between them, "what did this
 tool erase and when" is answerable after the fact.
 
+---
+
 ### Reads
 
 Linux:
@@ -215,6 +224,70 @@ HKLM\Software\Wow6432Node\...\Run
 **All registry access is `KEY_READ`.** No key or value is created, modified, or
 deleted. No scheduled task is registered or removed. No unit is enabled or
 disabled. Arachnid enumerates persistence; it never touches it.
+
+---
+
+## 4b. `arachnid-recover`: raw device reads
+
+`arachnid-recover` recovers deleted files from a disk image or an attached
+device. It is **read-only against its source**, and unlike Sanitize that is a
+property of the code rather than a policy: the trait every parser and the carver
+read through has no write method, and device handles are opened `.read(true)`
+and never `.write(true)`. The kernel refuses a write even if one were issued.
+
+It is nevertheless worth a rule of its own, because two of its behaviours look
+unusual on an endpoint.
+
+### What it does that may trip EDR
+
+| Behaviour | Detail |
+|---|---|
+| Raw device open, read-only | `\\.\PhysicalDriveN` / `/dev/sdX` opened for reading. Needs Administrator or root. No `IOCTL_DISK_*` write ioctl is ever issued |
+| Bulk sequential reads | 4 MiB chunks, potentially across the whole device, during a carving pass. Sustained full-device read is the signature; it resembles a backup agent or a disk imager, because that is what it is doing |
+| Device enumeration | the same read-only enumeration `arachnid-sanitize list-devices` performs, and the same code |
+| High-volume file creation | an export writes one file per recovered result into the output directory, plus a `custody.log` it appends to and `fsync`s after every record |
+
+### What it does not do
+
+No writes to the source device, at any point, by any code path. No network. No
+process spawning. No registry writes. No decryption, key recovery, password
+guessing or brute force — encrypted files are reported as encrypted and left
+alone. No persistence, no privilege escalation, no code loading.
+
+### File writes
+
+All under the `--output` directory the operator names: `results.json`,
+`summary.txt`, and — on export — an evidence container in exactly the format
+[§4](#4-filesystem-behaviour) describes, with `manifest.json`, an append-only
+`custody.log`, and the recovered files under `artifacts/`.
+
+Filenames under `artifacts/recovered/` derive from the **filesystem under
+examination**, which on a compromised host is attacker-controlled. Every path
+component is reduced before it becomes a path — `..`, absolute roots, drive
+prefixes, NUL bytes, control characters and reserved device names are all
+neutralized — so a recovered file cannot be written outside the output
+directory. Expect ordinary-looking user filenames there; expect them to be
+sanitized, not trusted.
+
+### Detection guidance
+
+A sustained full-device read plus a burst of file creation is the shape. Scope a
+rule to that pair rather than to the device open alone, which by itself is
+indistinguishable from any backup or imaging tool.
+
+Recover **refuses to write its output onto the device it is reading** — on Linux
+this is proven from `/proc/mounts` and refused outright, elsewhere it warns.
+That refusal is worth surfacing if you log the tool's stderr: it means an
+operator pointed the output at the wrong volume.
+
+The `--log` operational log records the source, the passes run and the outcome
+of every scan, and an export's custody log is an independent tamper-evident
+record of every file written. "What did this tool read and what did it produce"
+is answerable after the fact.
+
+Scanning an **image file** rather than a device needs no elevation and opens no
+raw device at all. That is the common case and the recommended one: work from an
+acquisition, not the live disk.
 
 ---
 

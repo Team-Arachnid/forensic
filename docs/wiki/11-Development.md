@@ -15,7 +15,7 @@ something without breaking the properties the tool depends on.
 
 ## Contents
 
-- [The eight crates](#the-eight-crates)
+- [The eleven crates](#the-eleven-crates)
 - [Dependency graph](#dependency-graph)
 - [Building](#building)
 - [Testing](#testing)
@@ -29,7 +29,7 @@ something without breaking the properties the tool depends on.
 
 ---
 
-## The eight crates
+## The eleven crates
 
 `arachnid-evidence` is the foundation every other one depends on.
 
@@ -43,6 +43,9 @@ something without breaking the properties the tool depends on.
 | `arachnid-core-tui` | `arachnid-tui` | terminal UI over the same library calls the CLI makes |
 | `arachnid-sanitize-core` | — | **destructive.** Device enumeration, wipe engines, safety rails, read-back verification, signed certificates |
 | `arachnid-sanitize-cli` | `arachnid-sanitize` | argument parsing and orchestration for erasure |
+| `arachnid-recover-core` | — | read-only NTFS/ext4/APFS parsing, signature carving, confidence scoring, export |
+| `arachnid-recover-cli` | `arachnid-recover` | argument parsing and orchestration for recovery |
+| `arachnid-cli` | `arachnid-cli` | the single entry point: the TUI bare, or dispatch into any of the three CLIs without re-exec |
 
 **The front ends contain no engine logic.** The TUI in particular is a
 view/controller layer: it never shells out to a CLI, and it can do nothing the
@@ -55,6 +58,12 @@ CLIs cannot.
 > [Secure Erasure § The inversion](14-Secure-Erasure.md#the-inversion) before
 > changing anything in it.
 
+> `arachnid-recover-core` is its mirror image. Its `Source` trait has **no write
+> method at all**, so no code path in the crate can write to the media under
+> examination. The two traits must never converge, and a `write_at` on `Source`
+> is not a feature request — it is the bug. See
+> [File Recovery § Read-only, structurally](15-File-Recovery.md#read-only-structurally).
+
 ### Toolchain floors
 
 | | Floor |
@@ -63,12 +72,16 @@ CLIs cannot.
 | `arachnid-core-tui` | Rust 1.88 |
 | `arachnid-sanitize-core` | Rust 1.88 |
 | `arachnid-sanitize-cli` | Rust 1.88 |
+| `arachnid-recover-core` | Rust 1.88 |
+| `arachnid-recover-cli` | Rust 1.88 |
+| `arachnid-cli` | Rust 1.88 |
 
 The Core engine crates and `arachnid-core-cli` stay buildable on **1.82**, so a
 locked-down build host with an older toolchain can still produce the triage CLI.
-The three above the floor need it for a real reason: ratatui 0.30 for the TUI,
-and the `windows` crate's raw-device I/O for Sanitize. Keep it that way — if a
-change to a Core engine crate needs 1.88, it belongs in a front end instead.
+The crates above the floor need it for a real reason: ratatui 0.30 for the TUI,
+and the `windows` crate's raw-device I/O for Sanitize and Recover. Keep it that
+way — if a change to a Core engine crate needs 1.88, it belongs in a front end
+instead.
 
 ---
 
@@ -85,13 +98,30 @@ change to a Core engine crate needs 1.88, it belongs in a front end instead.
            arachnid-core-cli   arachnid-core-tui
 ```
 
-Sanitize hangs off `arachnid-evidence` too, for the signing and hash-chain
-construction its certificate register reuses:
+Sanitize and Recover hang off `arachnid-evidence` too — Sanitize for the signing
+and hash-chain construction its certificate register reuses, Recover for the
+whole container it writes its exports into:
 
 ```
   arachnid-evidence ◄── arachnid-sanitize-core ◄── arachnid-sanitize-cli
+                    ◄── arachnid-recover-core  ◄── arachnid-recover-cli
                                   ▲
-                          arachnid-core-tui  (the Sanitize screen)
+                          arachnid-core-tui  (the Sanitize and Recover screens)
+```
+
+`arachnid-recover-core` also depends on `arachnid-sanitize-core`'s
+`device::enumerate` — via the CLI and the TUI, not the engine — rather than
+carrying a second device enumeration. That code is already read-only and already
+computes the system-volume cross-reference; what Recover adds is a handle that
+cannot write.
+
+`arachnid-cli` sits above everything, linking the three CLIs and the TUI:
+
+```
+  arachnid-core-cli ──┐
+  arachnid-recover-cli├──► arachnid-cli
+  arachnid-sanitize-cli┤
+  arachnid-core-tui ──┘
 ```
 
 External dependencies are deliberately few:
@@ -110,8 +140,14 @@ External dependencies are deliberately few:
 | `clap` | cli | argument parsing |
 | `ctrlc` | cli | clean capture interruption |
 | `ratatui` | tui | terminal rendering |
-| `windows` | sanitize-core (Windows) | raw device I/O and storage ioctls |
-| `tempfile` | sanitize-core (dev) | file-backed virtual devices for the safety-rail suite |
+| `windows` | sanitize-core, recover-core (Windows) | raw device I/O and storage ioctls |
+| `tempfile` | sanitize-core, recover-core (dev) | file-backed virtual devices and export targets in tests |
+
+Recover adds **no new external dependency**. Its filesystem parsers are
+hand-written over byte slices rather than pulled from `ntfs`/`ext4`-style crates:
+a triage binary that runs with high privilege on a possibly-compromised host
+should be auditable end to end, and three parsers of a few hundred lines each
+cost less trust than three more crates in the tree.
 
 Before adding one, read [Supply-chain checks](#supply-chain-checks). Several
 categories of crate are banned outright.

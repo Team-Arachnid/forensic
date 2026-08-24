@@ -25,6 +25,7 @@ of you.
 - [Validating an EDR rule](#workflow-7--validating-an-edr-rule)
 - [Team key management](#workflow-8--team-key-management)
 - [Media disposal](#workflow-9--media-disposal)
+- [Core → Recover → Sanitize, end to end](#workflow-10--core--recover--sanitize-end-to-end)
 
 ---
 
@@ -641,6 +642,108 @@ Read two fields before filing:
 
 Write those caveats into the disposal record. They are much cheaper to state now
 than to explain to an auditor later.
+
+---
+
+## Workflow 10 — Core → Recover → Sanitize, end to end
+
+The suite's three modules are one sequence: acquire, extract, destroy. This is
+the whole arc for a single drive, from an endpoint to the inventory shelf.
+
+> Steps 1–3 are read-only. Step 4 is not, and it is irreversible. Do not start
+> it until the case is closed and someone has signed off that the drive is no
+> longer needed as evidence.
+
+### 1 · Acquire
+
+Collect volatile state from the running host, then image the drive. The image
+lands in the container as an artifact like any other, hashed into the custody
+log at the moment it is written.
+
+```bash
+arachnid-core collect -o ./ev-host01 --operator "analyst-7" --signing-key ~/.keys/analyst-7.key
+arachnid-core verify  ./ev-host01
+```
+
+### 2 · Recover, from the image rather than the drive
+
+Work from the acquisition, not the live disk. The drive stays untouched, and a
+scan can be re-run as often as the case needs.
+
+```bash
+arachnid-recover scan \
+  --input ./ev-host01/artifacts/disk.img \
+  --carve-pass --carve-types jpg,png,pdf,docx,zip \
+  --output ./ev-host01-recovered
+```
+
+Read the summary before anything else. A `4` exit means the scan finished and
+left something out, and `results.json` names each thing:
+
+```bash
+jq -r '.filesystems[].unsupported[]?, .problems[]?' ./ev-host01-recovered/results.json
+```
+
+### 3 · Triage the results, then export
+
+Never export on the label alone. Look at the reasoning for anything you intend
+to rely on:
+
+```bash
+arachnid-recover list-results -i ./ev-host01-recovered/results.json --confidence high,medium
+arachnid-recover list-results -i ./ev-host01-recovered/results.json --detail ntfs-000018
+```
+
+Then export, and verify the export the same way you verified the collection —
+it is the same container format and the same command:
+
+```bash
+arachnid-recover export \
+  -i ./ev-host01-recovered/results.json \
+  -o ./ev-host01-recovered/exported \
+  --confidence high,medium
+
+arachnid-core verify ./ev-host01-recovered/exported
+```
+
+Two things to write into the case notes at this point:
+
+- **The key fingerprint** the export printed. Without it, `verify` proves the
+  container is internally consistent and nothing about who produced it.
+- **Which results are carved.** A carved file has no original name, path or
+  timestamp. If a finding rests on *where* a file was, it cannot rest on a
+  carved result.
+
+### 4 · Sanitize, once the case is closed
+
+Only now, and only after the sign-off. From here, follow
+[Workflow 9 — Media disposal](#workflow-9--media-disposal) in full: identify the
+drive against the ticket, rehearse with `--dry-run`, erase, read the exit code
+as a disposition, and file the certificate.
+
+```bash
+arachnid-sanitize list-devices
+arachnid-sanitize wipe /dev/sdb --method nist-purge --dry-run
+```
+
+### What the file trail looks like at the end
+
+```
+./ev-host01/                       the acquisition        (Core)
+  custody.log                        signed, hash-chained
+  artifacts/disk.img
+./ev-host01-recovered/             the scan               (Recover)
+  results.json                       every result + its scoring rationale
+  summary.txt
+  exported/                          the recovered files  (Recover)
+    custody.log                        signed, hash-chained
+    artifacts/recovered/…
+    artifacts/carved/…
+./certs/                           the erasure certificate (Sanitize)
+```
+
+Three containers, one custody format, one `verify`. That is the point of doing
+it in this order.
 
 ---
 

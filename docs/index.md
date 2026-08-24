@@ -54,9 +54,10 @@ Live triage is one input, not the answer — correlate it with a memory image.
 
 <div class="warn-note" markdown="1">
 
-**One binary in this suite destroys data.** `arachnid-core` and `arachnid-tui`
-are read-only against the target. `arachnid-sanitize` is not: it exists to make a
-device unreadable, and a wipe cannot be undone. It is a separate allowlisting
+**One binary in this suite destroys data.** `arachnid-core`,
+`arachnid-recover` and `arachnid-tui` are read-only against the target.
+`arachnid-sanitize` is not: it exists to make a device unreadable, and a wipe
+cannot be undone. It is a separate allowlisting
 decision and a separate habit — `--dry-run` first, every time.
 
 </div>
@@ -65,9 +66,12 @@ decision and a separate habit — `--dry-run` first, every time.
 
 | Module | Status |
 |---|---|
-| **Arachnid Core** | shipping — `arachnid-core`, `arachnid-tui` |
-| **Arachnid Sanitize** | shipping — `arachnid-sanitize`, and screen 7 of the TUI |
-| **Arachnid Recover** | not built. Consumes Core's containers directly |
+| **Arachnid Core** | shipping — `arachnid-core`, `arachnid-tui`. Read-only |
+| **Arachnid Recover** | shipping — `arachnid-recover`, and screen 8 of the TUI. Read-only |
+| **Arachnid Sanitize** | shipping — `arachnid-sanitize`, and screen 7 of the TUI. **Destroys data** |
+
+Core acquires, Recover extracts, Sanitize destroys. All three share one evidence
+container format, so the whole chain verifies with `arachnid-core verify`.
 
 ## Elsewhere
 

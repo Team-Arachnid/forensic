@@ -99,8 +99,9 @@ ev-host01/
 
 Why a directory: an analyst can hash, cite, diff and hand off a single artifact
 without unpacking anything, and a multi-gigabyte memory image never has to be
-read into a container format. The [Recover module](Home.md#the-suite) consumes
-these directories directly.
+read into a container format. [Recover](15-File-Recovery.md) reads an acquired
+image straight out of one of these directories, and writes its own exports back
+into new ones — so a recovery verifies with the same `arachnid-core verify`.
 
 **Containers are never appended to.** Pointing `-o` at a directory that already
 holds a `custody.log` is refused:

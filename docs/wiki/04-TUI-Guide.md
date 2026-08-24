@@ -26,7 +26,7 @@ cargo run -p arachnid-core-tui
 - [Launch and the splash](#launch-and-the-splash)
 - [The frame](#the-frame)
 - [Global keys](#global-keys)
-- [The eight screens](#the-eight-screens)
+- [The nine screens](#the-nine-screens)
   - [1 · Dashboard](#1--dashboard)
   - [2 · Collect](#2--collect)
   - [3 · Capture](#3--capture)
@@ -34,6 +34,7 @@ cargo run -p arachnid-core-tui
   - [5 · Verify](#5--verify)
   - [6 · Report](#6--report)
   - [7 · Sanitize](#7--sanitize)
+  - [8 · Recover](#8--recover)
   - [Chain of custody](#chain-of-custody)
 - [Editing fields](#editing-fields)
 - [Confirmations](#confirmations)
@@ -96,23 +97,29 @@ capture is unavailable
 ## The frame
 
 ```
- arachnid  1:Dashboard  2:Collect  3:Capture  4:Parse PCAP  5:Verify  6:Report  7:Sanitize
+ arachnid  1:Dashboard  2:Collect  3:Capture  4:Parse PCAP  5:Verify  6:Report  7:Sanitize  8:Recover
  ! not running elevated: collection will miss processes …  (Esc dismisses)
-╭ privilege ─────────────╮╭ packet capture ────────╮╭ evidence session ──────╮
-│root                    ││2 device(s)             ││./ev-host01             │
-│full collection availab.││eth0, lo                ││operator analyst-7@linux│
-│                        ││                        ││verified 8 artifacts    │
-╰────────────────────────╯╰────────────────────────╯╰────────────────────────╯
+╭ privilege ─────────╮╭ packet capture ────╮╭ evidence session ──╮╭ recover ───────────╮╭ sanitize ──────────╮
+│root                ││2 device(s)         ││./ev-host01         ││5 recovered         ││no wipe running     │
+│full collection ava.││eth0, lo            ││operator analyst-7@.││1 High 2 Med 2 Low  ││2 device(s), 1 syst.│
+│                    ││                    ││verified 8 artifacts││./ev-host01/disk.img││none this session   │
+╰────────────────────╯╰────────────────────╯╰────────────────────╯╰────────────────────╯╰────────────────────╯
  go to
  > Collect     collect volatile system state
    Capture     capture live network traffic
    Parse PCAP  analyse an existing PCAP
    Verify      verify an evidence container
    Report      render a container's report
+   Recover     recover deleted files — read-only scan
    Sanitize    securely erase a device — destroys data
  no startup warnings; every check passed
- ? this help  ·  j/k move  ·  Enter open  ·  Tab next screen  ·  1-7 jump …
+ ? this help  ·  j/k move  ·  Enter open  ·  Tab next screen  ·  1-8 jump …
 ```
+
+Five status cards, one per module plus the two host checks. Below about 165
+columns they lose their borders and list flat instead — the values stay, the
+boxes go. The tab strip's own threshold is computed from the tab titles rather
+than hardcoded, so adding a module cannot leave it silently truncated.
 
 Five bands, top to bottom:
 
@@ -134,7 +141,7 @@ Available from every screen.
 |---|---|
 | `Tab` | next screen |
 | `Shift-Tab` | previous screen |
-| `1`–`7` | jump to that screen |
+| `1`–`8` | jump to that screen |
 | `?` | show every binding |
 | `Ctrl-L` | toggle the operational log pane |
 | `Esc` | dismiss a toast, leave a drill-down, or return to the Dashboard |
@@ -149,16 +156,19 @@ drill-down (returning to whichever screen opened it), then to the Dashboard.
 
 ---
 
-## The eight screens
+## The nine screens
 
 ### 1 · Dashboard
 
 Status at a glance, and a launcher.
 
 **Cards:** privilege · packet capture availability and device list · current
-evidence session (last container, operator, last verify result).
+evidence session (last container, operator, last verify result) · Recover scan
+status · Sanitize job status. The last two state what is running even when that
+is "nothing", so an operator never has to open a module's screen to find out
+whether a job is in flight.
 
-**Below:** the six quick-launch tiles, and every startup warning in full.
+**Below:** the seven quick-launch tiles, and every startup warning in full.
 
 | Key | Does |
 |---|---|
@@ -298,6 +308,69 @@ clearable by the reflex that clears those.
 
 The device list **refuses to hand a system disk to the wipe flow** unless `f` is
 set, so the operator never types a serial for a device they cannot wipe.
+
+---
+
+### 8 · Recover
+
+File carving and recovery. Read-only against its source. Full reference:
+[File Recovery](15-File-Recovery.md).
+
+A five-step flow: **source → configuration → progress → results → export**.
+
+| Key | Does |
+|---|---|
+| `j` / `k` | move |
+| `Enter` | select a row, or edit a field |
+| `Space` | toggle a pass or a carve type |
+| `r` | reload the device list, or re-read a container's artifact list |
+| `s` | start the scan |
+| `c` / `t` | filter results by confidence / by file type |
+| `e` | export |
+| `x` | cancel a running scan |
+
+**Source** offers three things to read from: an image file, a device from the
+read-only device list (the same enumeration Sanitize uses, opened without write
+access), or an artifact out of a prior Core evidence container.
+
+The container picker reads artifact names with `read_log`, which deliberately
+does **not** check signatures. It is a file picker; presenting it as though the
+log had been verified would be a lie. Verification is screen `5`'s job, on the
+same path.
+
+**Results** is the part worth knowing about. Every row shows its confidence
+label, and the pane below shows the checks behind the *selected* row — always,
+not behind a drill-down:
+
+```
+ recovered  1 High  ·  2 Medium  ·  2 Low   (5 shown)
+ c confidence: all  ·  t type: all  ·  e export  ·  Esc back
+  CONF    TYPE        SIZE  METHOD      NAME / PATH
+  High    pdf           37  NTFS MFT    Cases/quarterly.pdf
+> Medium  jpg          206  NTFS MFT    Cases/evidence-photo.jpg
+  Medium  txt           45  NTFS MFT    <unknown>/orphan.txt
+  Low     jpg          206  carved      carve-000000-at-90112.jpg
+  Low     pdf           36  carved      carve-000001-at-81920.pdf
+
+ Medium  MFT record intact and every extent reads back, but the record is
+ deleted: the clusters are free and may since have been reallocated
+  [  ] mft_entry_in_use          record is marked deleted; its clusters are free
+  [ok] run_list_complete         1 run(s) decoded to the declared end of the file
+  [ok] allocation_covers_size    206 byte(s) mapped for a 206 byte file
+  [ok] extents_readable          1 extent(s) sampled and readable
+```
+
+A recovered file looks identical in a folder whether the filesystem handed over
+its name and timestamps or a carver found its bytes in unallocated space. Those
+are very different claims, so the screen never shows the file without the claim.
+
+**Export** takes an output directory and a confidence threshold, defaulting to
+`Medium` and better — `Low` includes every carved fragment, which is rarely what
+you want on a first pass. The export runs on its own thread and writes a signed
+custody log, exactly as a collection does.
+
+A **running scan survives navigating away**, like a capture and a wipe: carving
+a full disk is an hours-long read.
 Pressing `f` raises an error-styled toast saying the override is active.
 
 A **3-second cooldown** precedes the first write, and the commit key is

@@ -20,6 +20,7 @@
 - [12 · Troubleshooting](12-Troubleshooting.md)
 - [13 · FAQ](13-FAQ.md)
 - [14 · Secure Erasure](14-Secure-Erasure.md)
+- [15 · File Recovery](15-File-Recovery.md)
 
 ---
 

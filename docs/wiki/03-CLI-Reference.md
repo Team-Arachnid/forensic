@@ -48,6 +48,18 @@ Commands:
 `arachnid-core --help` prints the exit-code table too. `arachnid-core <cmd>
 --help` prints the flags for one subcommand.
 
+This page documents `arachnid-core` only. The other two modules have their own
+CLIs, each fully documented on its own page rather than duplicated here:
+
+| Binary | Commands | Page |
+|---|---|---|
+| `arachnid-recover` | `scan` · `carve` · `list-results` · `export` | [File Recovery](15-File-Recovery.md#cli-reference) |
+| `arachnid-sanitize` | `list-devices` · `wipe` · `verify-wipe` · `cert` | [Secure Erasure](14-Secure-Erasure.md#cli-reference) |
+
+`arachnid-cli` is the single entry point over all three: bare it opens the TUI,
+and `arachnid-cli <command>` runs any command above directly. It dispatches
+in-process, so exit codes are the ones the underlying command returns.
+
 ---
 
 ## Global options

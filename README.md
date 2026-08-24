@@ -30,11 +30,21 @@ cargo install --path crates/arachnid-cli
 
 arachnid-cli                                          # the TUI, every module
 arachnid-cli collect -o ./ev-host01                   # or any command directly
+arachnid-cli recover scan -i disk.img -o ./rec
 arachnid-cli sanitize list-devices
 ```
 
-The suite also ships **Arachnid Sanitize**, the secure erasure module. Unlike
-everything above, it *destroys* data — see [Secure erasure](#secure-erasure).
+**Arachnid Recover** pulls deleted files back out of an image or a read-only
+device — see [File recovery](#file-recovery). Read-only, like Core.
+
+```
+arachnid-recover scan  -i ./ev-host01/artifacts/disk.img -o ./rec --carve-pass
+arachnid-recover list-results -i ./rec/results.json --confidence high,medium
+arachnid-recover export -i ./rec/results.json -o ./rec/out --confidence high,medium
+```
+
+**Arachnid Sanitize** is the secure erasure module. Unlike everything above, it
+*destroys* data — see [Secure erasure](#secure-erasure).
 
 ```
 arachnid-sanitize list-devices                        # flags the disk hosting the running OS
@@ -42,6 +52,9 @@ arachnid-sanitize wipe /dev/sdb --method nist-clear --dry-run
 arachnid-sanitize wipe /dev/sdb --method dod3 --confirm-serial S4EVNF0M123456
 arachnid-sanitize cert --verify                       # check the certificate register
 ```
+
+The three modules are one workflow: **Core** acquires, **Recover** extracts,
+**Sanitize** destroys once the case is closed.
 
 ---
 
@@ -53,6 +66,7 @@ arachnid-sanitize cert --verify                       # check the certificate re
 - [Usage](#usage)
 - [Terminal UI](#terminal-ui)
 - [The evidence container](#the-evidence-container)
+- [File recovery](#file-recovery)
 - [Secure erasure](#secure-erasure)
 - [Threat model](#threat-model)
 - [SOC allowlisting](#soc-allowlisting)
@@ -271,21 +285,22 @@ operator can still verify and report on a container collected elsewhere.
 ```
 
 ```
- arachnid  1:Dashboard  2:Collect  3:Capture  4:Parse PCAP  5:Verify  6:Report
-╭ privilege ─────────────╮╭ packet capture ────────╮╭ evidence session ──────╮
-│root                    ││2 device(s)             ││./ev-host01             │
-│full collection availab.││eth0, lo                ││operator analyst-7@linux│
-│                        ││                        ││verified 8 artifacts    │
-╰────────────────────────╯╰────────────────────────╯╰────────────────────────╯
+ arachnid  1:Dashboard  2:Collect  3:Capture  4:Parse PCAP  5:Verify  6:Report  7:Sanitize  8:Recover
+╭ privilege ─────────╮╭ packet capture ────╮╭ evidence session ──╮╭ recover ───────────╮╭ sanitize ──────────╮
+│root                ││2 device(s)         ││./ev-host01         ││4 recovered         ││no wipe running     │
+│full collection ava.││eth0, lo            ││operator analyst-7@.││0 High 2 Med 2 Low  ││2 device(s), 1 syst.│
+│                    ││                    ││verified 8 artifacts││./ev-host01/disk.img││none this session   │
+╰────────────────────╯╰────────────────────╯╰────────────────────╯╰────────────────────╯╰────────────────────╯
  go to
  > Collect     collect volatile system state
    Capture     capture live network traffic
    Parse PCAP  analyse an existing PCAP
    Verify      verify an evidence container
    Report      render a container's report
+   Recover     recover deleted files — read-only scan
    Sanitize    securely erase a device — destroys data
  no startup warnings; every check passed
- ? this help  ·  j/k move  ·  Enter open  ·  Tab next screen  ·  1-7 jump …
+ ? this help  ·  j/k move  ·  Enter open  ·  Tab next screen  ·  1-8 jump …
 ```
 
 ### Screens
@@ -299,6 +314,7 @@ operator can still verify and report on a container collected elsewhere.
 | 5 | Verify | per-artifact hash status, overall verdict, collection vs. verify time |
 | 6 | Report | container contents by type, and export as JSON / Markdown / HTML |
 | 7 | Sanitize | device list, method choice, gated confirm, live wipe progress, certificate |
+| 8 | Recover | source choice, pass configuration, live scan progress, results browser with per-item scoring rationale, export |
 
 Verify and Report both open the **chain-of-custody** view (`c`): every record in
 order, with the selected one shown in full — complete digest, not a prefix.
@@ -307,7 +323,7 @@ Nothing on that screen is summarized away.
 ### Keys
 
 `?` lists every binding, generated from the same keymap table that dispatches
-them. Globally: `Tab`/`Shift-Tab` or `1`-`7` to move between screens, `Ctrl-L`
+them. Globally: `Tab`/`Shift-Tab` or `1`-`8` to move between screens, `Ctrl-L`
 for the operational log pane, `Esc` to back out, `q` to quit. Within a screen,
 `j`/`k` move, `Enter` edits a field or drills in.
 
@@ -323,7 +339,14 @@ savefile is flushed and sealed rather than lost.
 - **Capture keeps running while you navigate.** It is a background thread; the
   header shows `[capturing]` from every screen. A running **wipe** behaves the
   same way — a multi-pass erase of a large disk runs for hours, and pinning the
-  operator to one screen for that long is not a real workflow.
+  operator to one screen for that long is not a real workflow. So does a
+  **recovery scan**, for the same reason: carving a full disk is an hours-long
+  read.
+- **The Recover results browser always shows its reasoning.** The confidence
+  label is on every row and the checks behind it are in a pane beside the
+  selection, not behind a drill-down. A recovered file looks identical in a
+  folder whether the filesystem handed over its name and timestamps or a carver
+  found its bytes in unallocated space, and those are very different claims.
 - **The Sanitize confirm screen is deliberately not the normal confirm.**
   Different border, different colour, an explicit `IRREVERSIBLE DATA
   DESTRUCTION` banner, a typed serial, and a commit key that is *not* `y` or
@@ -378,6 +401,172 @@ correctness question.
 Every record carries both a UTC wall-clock timestamp and a monotonic offset from
 container creation. Wall clock is what an analyst reads; the monotonic clock is
 what preserves ordering when the examined host's clock steps mid-collection.
+
+---
+
+## File recovery
+
+**Arachnid Recover** (`arachnid-recover`, and the Recover screen in the TUI)
+recovers files from a disk image or an attached device, by parsing filesystem
+metadata and by carving raw sectors. It is the middle of the suite's three
+modules:
+
+```
+   Core                    Recover                  Sanitize
+   acquire evidence   →    extract files from it  →  destroy the media
+   (read-only)             (read-only)               (destroys data)
+```
+
+Read-only against the source, and structurally so: `Source`, the trait every
+parser and the carver read through, has no write method. There is no code path
+in the crate that could write to the media under examination, and adding one
+means changing `crates/arachnid-recover-core/src/source.rs`. Device handles are
+opened `.read(true)` and never `.write(true)`, so the OS refuses a write even if
+one were somehow issued. It is the exact inverse of Sanitize's `WipeTarget`, and
+the two must never converge.
+
+```bash
+# Filesystem pass over a Core-acquired image, plus carving
+arachnid-recover scan \
+  --input ./evidence/case-4471/disk.img \
+  --carve-pass --carve-types jpg,png,pdf,docx \
+  --output ./evidence/case-4471/recovered/
+
+# Look before exporting
+arachnid-recover list-results -i ./evidence/case-4471/recovered/results.json \
+  --confidence high,medium --type pdf
+arachnid-recover list-results -i ./evidence/case-4471/recovered/results.json \
+  --detail ntfs-000018            # the full scoring rationale for one result
+
+# Write the files out, with a chain-of-custody log
+arachnid-recover export -i ./evidence/case-4471/recovered/results.json \
+  -o ./evidence/case-4471/exported/ --confidence high,medium
+```
+
+### Two passes, two kinds of claim
+
+| Pass | Reads | Recovers | Confidence ceiling |
+|---|---|---|---|
+| **Filesystem-aware** | NTFS MFT, ext4 inode tables and jbd2 journal | contents **plus** the original name, path and timestamps | `High` |
+| **Raw carving** | sectors, by file signature | contents only — no name, no path, no timestamp | `Low` |
+
+Carving works where no filesystem is left to parse: a reformatted volume, a
+partition table that no longer reads, or an APFS container. It recovers content
+without identity, and is never presented as though it recovered more.
+
+### Supported filesystems
+
+| Filesystem | What is parsed | What is not |
+|---|---|---|
+| **NTFS** | boot sector, MFT with fixup validation, run lists, `$STANDARD_INFORMATION` and `$FILE_NAME`, path reconstruction from parent references — including through *deleted* directory records | NTFS-compressed `$DATA` is located but not decompressed; alternate data streams are skipped rather than exported under the file's own name |
+| **ext4** | superblock, group descriptors, inode tables, extent trees, directory entries **and the deleted entries in their slack**, plus a jbd2 journal pass for inodes the live table has already reused | ext2/ext3 indirect block maps; inline data; inline directories. Each is named individually in the results, never silently skipped |
+| **APFS** | container and volume identification: block geometry, volume names, file and directory counts, encryption state | per-file recovery. Resolving the object map, file-system B-tree and extent-reference tree is out of v1 scope, and the scan **says so** rather than returning an empty result set that reads as "nothing was there" |
+
+### Carved file types
+
+`jpg` · `png` · `pdf` · `zip` (recognised as `docx` / `xlsx` / `pptx` from the
+member layout) · `mp4` · `txt`
+
+Where the format has its own terminator, the end of the file is found
+structurally rather than guessed: JPEG's `FFD9`, PNG's `IEND`, PDF's `%%EOF`,
+ZIP's end-of-central-directory record, and MP4 by walking the box chain and
+summing the declared box lengths. Where it does not — plain text — the result
+says so, and its length is a bound rather than a claim.
+
+`txt` is off by default. On a real volume it matches every log fragment and
+string table on the disk and buries everything else.
+
+**Fragmentation.** Files are carved as contiguous runs. A file whose terminator
+is not found within the type's size cap is reported with `footer_found: false`
+and flagged likely-incomplete. This build does **not** attempt to reassemble a
+fragmented file from non-adjacent runs: bi-fragment gap carving and its
+relatives guess, and in evidence a plausible-looking wrong reconstruction is
+worse than an honest partial one.
+
+### Confidence scoring
+
+Every result carries a label *and* the checks behind it, because `High` and
+`Low` look identical once they are files in a folder.
+
+| Label | Means | Reached when |
+|---|---|---|
+| `High` | filesystem metadata intact, every allocated byte read back | a **live** entry, a complete run list or extent tree, and every extent readable |
+| `Medium` | filesystem metadata found, but something about the data is in doubt | deleted; or the allocation does not cover the declared size; or an extent will not read; or the data is compressed or encrypted |
+| `Low` | raw-carved: structurally valid, completeness unverified | every carved result, without exception |
+
+The rule that does the most work: **a deleted file never scores `High`.** Its
+clusters or blocks are free, so a clean read proves the bytes are readable, not
+that they are still *that file's* bytes — and that distinction is the difference
+between evidence and a coincidence.
+
+The rationale is stored, not just the label. Each result lists the checks that
+ran, whether each passed, and what was actually observed:
+
+```
+ntfs-000018  Cases/evidence-photo.jpg
+  confidence  Medium
+  MFT record intact and every extent reads back, but the record is deleted:
+  the clusters are free and may since have been reallocated to another file
+
+  checks
+    [  ] mft_entry_in_use        record is marked deleted; its clusters are free
+    [ok] run_list_complete       1 run(s) decoded to the declared end of the file
+    [ok] allocation_covers_size  206 byte(s) mapped for a 206 byte file
+    [ok] extents_readable        1 extent(s) sampled and readable
+```
+
+### Export is evidence, not a folder of files
+
+Every exported file is hashed as it is written and its digest goes into the same
+signed, hash-chained custody log a triage collection uses. A recovery export
+**verifies with `arachnid-core verify`**, unchanged — there is no second
+implementation of hashing, signing or verification anywhere in this module.
+
+```
+exported/
+  manifest.json
+  custody.log
+  artifacts/
+    results.json                        the index the export was selected from
+    export-summary.txt
+    recovered/Cases/evidence-photo.jpg  filesystem-recovered: original structure
+    carved/carve-000000-at-90112.jpg    carved: flat, named after where it was found
+```
+
+Original paths come out of the filesystem under examination, which on a
+compromised host is attacker-controlled. Every component is reduced before it
+becomes a path: `..`, absolute roots, Windows drive prefixes, NUL bytes,
+reserved device names and over-long components. A file whose path cannot be made
+safe is reported as skipped, never written outside the output directory.
+
+### Safety rails
+
+- **Never writes to the source.** Structural, not advisory — see above.
+- **Recovery output must not land on the device being recovered from.** Writing
+  there overwrites exactly the unallocated space the recovery is reading. On
+  Linux this is proven from the mount table and refused. On other platforms it
+  cannot be proven cheaply, so the risk is stated loudly rather than assumed
+  away — refusing on a guess would block legitimate work.
+- **An image that does not match the scan is refused at export.** If the source
+  is a different size than the results recorded, every offset in the index would
+  point at the wrong bytes.
+- **Encrypted files are reported, not attacked.** EFS-encrypted `$DATA`, ext4
+  per-file encryption and FileVault volumes are identified and labelled. No key
+  recovery, password guessing or brute force of any kind exists in this module,
+  and none will be added.
+
+### Exit codes
+
+`0` success · `1` runtime error · `2` usage · `3` refused by a rail · `4`
+completed, but something was skipped or unsupported. A case-processing script
+can distinguish a clean scan from one that hit an unsupported filesystem
+feature.
+
+### Not in scope
+
+No decryption or key recovery. No write-back to source media under any
+circumstance. No network or remote recovery. No proprietary or undocumented
+filesystems in v1 — NTFS, ext4, and best-effort APFS identification.
 
 ---
 
@@ -581,12 +770,18 @@ The JSON report is the contract, and it is versioned:
 - [`schema/report.schema.json`](schema/report.schema.json) — the full report
 - [`schema/custody.schema.json`](schema/custody.schema.json) — one custody record
 
+Recovery results carry their own version, moving independently of the container
+format. A worked sample, regenerated from the checked-in fixtures rather than
+hand-written, is at
+[`schema/samples/recovery-results.json`](schema/samples/recovery-results.json)
+and [`schema/samples/recovery-summary.txt`](schema/samples/recovery-summary.txt).
+
 Consumers must reject a major version they do not implement. The Markdown and
 HTML renderings carry no information the JSON lacks, and can be regenerated at
 any time with `arachnid-core report`.
 
-The container format is shared with the Arachnid Recover module, which consumes
-these containers directly.
+The container format is shared with Arachnid Recover, which reads acquired
+images out of these containers and writes its exports back into new ones.
 
 ---
 
@@ -668,6 +863,24 @@ phone home fails the build rather than shipping.
 - **Device enumeration needs elevation.** Unprivileged, drive sizes cannot be
   read; devices are still listed, with the size shown as `unknown`, rather than
   the tool reporting an empty device list on a machine that has disks.
+- **Recover does not reassemble fragmented files.** A carved file is a
+  contiguous run; one whose terminator is not found is reported incomplete
+  rather than stitched together from a guess. See
+  [File recovery](#file-recovery).
+- **Recover does not decompress NTFS-compressed `$DATA`.** The clusters are
+  located and the file is capped at `Medium` with the reason stated, rather
+  than exported as though the raw clusters were its contents.
+- **Recover finds filesystems at three fixed offsets** — 0, 1 MiB, and 63
+  sectors — rather than parsing the MBR or GPT partition table. Those cover a
+  bare partition image and both mainstream alignment conventions; an image
+  whose volumes start elsewhere needs the partition imaged directly, or the
+  carving pass, which needs no filesystem at all.
+- **APFS recovers no files.** The container and its volumes are identified and
+  reported; per-file recovery is out of v1 scope and the scan says so
+  explicitly. Carving works on an APFS container and is the supported route.
+- **The release script ships `arachnid-core` only.** `arachnid-sanitize`,
+  `arachnid-recover` and `arachnid-cli` build in CI on Linux and Windows but
+  are not yet part of the signed release artifact set.
 
 ---
 

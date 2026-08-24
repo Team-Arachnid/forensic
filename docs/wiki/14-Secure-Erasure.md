@@ -6,7 +6,7 @@
 ---
 # 14 · Secure Erasure (Arachnid Sanitize)
 
-[← FAQ](13-FAQ.md) · [Home](Home.md)
+[← FAQ](13-FAQ.md) · [Home](Home.md) · [File Recovery →](15-File-Recovery.md)
 
 > **This module destroys data.** Every other tool in the suite is read-only
 > against its target. `arachnid-sanitize` exists to make a device unreadable,
@@ -611,4 +611,4 @@ The full disclosure is
 
 ---
 
-[← FAQ](13-FAQ.md) · [Home](Home.md)
+[← FAQ](13-FAQ.md) · [Home](Home.md) · [File Recovery →](15-File-Recovery.md)
