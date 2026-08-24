@@ -1,6 +1,6 @@
 [package]
 name = "arachnid-cli"
-description = "Arachnid Forensic: one entry point for triage, network forensics and secure erasure."
+description = "Arachnid Forensic: one entry point for triage, network forensics, file recovery and secure erasure."
 version.workspace = true
 edition.workspace = true
 # Follows the TUI and Sanitize floors, since it links both.
@@ -16,4 +16,5 @@ path = "src/main.rs"
 [dependencies]
 arachnid-core-cli.workspace = true
 arachnid-core-tui.workspace = true
+arachnid-recover-cli.workspace = true
 arachnid-sanitize-cli.workspace = true

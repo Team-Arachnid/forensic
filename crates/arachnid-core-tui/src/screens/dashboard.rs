@@ -14,12 +14,16 @@ use crate::ui::{self, Theme};
 pub const KEYS: &[(&str, &str)] = &[("j/k", "move"), ("Enter", "open")];
 
 /// Quick-launch tiles, in the order they appear.
-const TILES: [(AppScreen, &str); 6] = [
+const TILES: [(AppScreen, &str); 7] = [
     (AppScreen::Collect, "collect volatile system state"),
     (AppScreen::Capture, "capture live network traffic"),
     (AppScreen::Parse, "analyse an existing PCAP"),
     (AppScreen::Verify, "verify an evidence container"),
     (AppScreen::Report, "render a container's report"),
+    (
+        AppScreen::Recover,
+        "recover deleted files — read-only scan",
+    ),
     (
         AppScreen::Sanitize,
         "securely erase a device — destroys data",
@@ -29,7 +33,12 @@ const TILES: [(AppScreen, &str); 6] = [
 /// Status cards across the top. Named because three things depend on it — the
 /// column split, the width each card ellipsizes to, and the terminal width
 /// below which the boxes are dropped — and they must not drift apart.
-const CARDS: usize = 4;
+///
+/// Five, one per module plus the two host checks, which is what completes the
+/// Core / Recover / Sanitize story on this screen. Below `CARDS * MIN_CARD_W`
+/// the flat layout takes over, which is the same fallback four cards already
+/// used on a narrow terminal.
+const CARDS: usize = 5;
 
 /// Columns a boxed card needs to hold its values without wrapping. Below
 /// `CARDS * MIN_CARD_W` the cards are listed flat instead.
@@ -249,10 +258,55 @@ fn status_cards(app: &App, width: usize) -> [(&'static str, Vec<Line<'static>>);
         }
     };
 
+    // Recover is read-only, so unlike Sanitize its card is not about danger —
+    // it is about where the last scan got to, which an operator otherwise has
+    // to open the screen to find out.
+    let recover = match &app.recover_job {
+        Some(j) => {
+            let p = &j.progress;
+            vec![
+                Line::styled(
+                    if j.exporting {
+                        "export in progress".to_string()
+                    } else {
+                        "scan in progress".to_string()
+                    },
+                    Style::new().fg(t.warn),
+                ),
+                Line::from(ui::dim(ui::ellipsis(&j.source, cell))),
+                Line::from(ui::dim(format!(
+                    "{}  {} file(s)",
+                    p.phase_label(),
+                    p.files_found.load(std::sync::atomic::Ordering::Relaxed)
+                ))),
+            ]
+        }
+        None => match &app.recover.results {
+            Some(r) => {
+                let (high, medium, low) = r.counts();
+                vec![
+                    Line::styled(
+                        format!("{} recovered", r.files.len()),
+                        t.verdict(r.files.iter().any(|f| {
+                            f.confidence() != arachnid_recover_core::Confidence::Low
+                        })),
+                    ),
+                    Line::from(ui::dim(format!("{high} High  {medium} Med  {low} Low"))),
+                    Line::from(ui::dim(ui::ellipsis(&r.source, cell))),
+                ]
+            }
+            None => vec![
+                Line::from(ui::dim("no scan this session")),
+                Line::from(ui::dim("read-only: images and devices")),
+            ],
+        },
+    };
+
     [
         ("privilege", privilege),
         ("packet capture", capture),
         ("evidence session", session),
+        ("recover", recover),
         ("sanitize", sanitize),
     ]
 }
