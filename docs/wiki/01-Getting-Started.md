@@ -66,13 +66,41 @@ cargo build --release
 cargo test --workspace
 ```
 
-Three binaries in `target/release/`:
+### Put it on your PATH
+
+`cargo build` leaves the binaries in `target/release/`; it does **not** install
+them. Installing is the step that makes the command work from anywhere:
+
+```bash
+cargo install --path crates/arachnid-cli
+arachnid-cli --version
+```
+
+That is the only one you need. **`arachnid-cli` is the single entry point** —
+bare it opens the terminal UI, and it takes every command below directly:
+
+```bash
+arachnid-cli                          # the TUI, covering every module
+arachnid-cli collect -o ./ev-host01   # or any command, straight through
+arachnid-cli sanitize list-devices
+arachnid-cli --help
+```
+
+> Note the binary names are not the crate names. `arachnid-core-cli` is a
+> *crate*; typing it gets you `command not found`.
+
+Four binaries land in `target/release/`:
 
 | Binary | Crate | What it is |
 |---|---|---|
-| `arachnid-core` | `arachnid-core-cli` | the triage CLI |
-| `arachnid-tui` | `arachnid-core-tui` | the terminal UI |
+| `arachnid-cli` | `arachnid-cli` | **the entry point.** TUI bare, every command with a subcommand |
+| `arachnid-core` | `arachnid-core-cli` | the triage CLI on its own |
+| `arachnid-tui` | `arachnid-core-tui` | the terminal UI on its own |
 | `arachnid-sanitize` | `arachnid-sanitize-cli` | **destructive.** Secure erasure — see [Secure Erasure](14-Secure-Erasure.md) |
+
+The last three are what SOAR playbooks and the release scripts name, and their
+exit codes are a documented contract, so they still ship. If you are typing
+commands yourself, you only need the first.
 
 Build just one:
 

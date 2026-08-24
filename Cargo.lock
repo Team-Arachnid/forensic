@@ -83,6 +83,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arachnid-cli"
+version = "0.1.0"
+dependencies = [
+ "arachnid-core-cli",
+ "arachnid-core-tui",
+ "arachnid-sanitize-cli",
+]
+
+[[package]]
 name = "arachnid-collect"
 version = "0.1.0"
 dependencies = [
