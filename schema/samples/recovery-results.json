@@ -1,0 +1,250 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "arachnid-recover",
+  "tool_version": "0.1.0",
+  "source": "test-fixtures/ntfs-deleted.img",
+  "source_size": 131072,
+  "started_utc": "2026-03-01T12:00:00Z",
+  "finished_utc": "2026-03-01T12:00:04Z",
+  "operator": "sample-operator@lab",
+  "filesystem_pass": true,
+  "carve_pass": true,
+  "carve_types": [
+    "jpg",
+    "png",
+    "pdf",
+    "zip",
+    "mp4"
+  ],
+  "filesystems": [
+    {
+      "kind": "ntfs",
+      "offset": 0,
+      "entries": 3
+    }
+  ],
+  "files": [
+    {
+      "id": "ntfs-000017",
+      "method": "ntfs_mft",
+      "original_path": "Cases/quarterly.pdf",
+      "export_name": "quarterly.pdf",
+      "file_type": "pdf",
+      "size": 37,
+      "extents": [
+        {
+          "offset": 81920,
+          "length": 37
+        }
+      ],
+      "created_utc": "2026-03-01T12:00:00Z",
+      "modified_utc": "2026-03-01T12:00:00Z",
+      "accessed_utc": "2026-03-01T12:00:00Z",
+      "deleted": false,
+      "rationale": {
+        "confidence": "high",
+        "summary": "live MFT record, complete run list, every extent read back cleanly",
+        "checks": [
+          {
+            "check": "mft_entry_in_use",
+            "passed": true,
+            "detail": "record is live in the MFT"
+          },
+          {
+            "check": "run_list_complete",
+            "passed": true,
+            "detail": "1 run(s) decoded to the declared end of the file"
+          },
+          {
+            "check": "allocation_covers_size",
+            "passed": true,
+            "detail": "37 byte(s) mapped for a 37 byte file"
+          },
+          {
+            "check": "extents_readable",
+            "passed": true,
+            "detail": "1 extent(s) sampled and readable"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ntfs-000018",
+      "method": "ntfs_mft",
+      "original_path": "Cases/evidence-photo.jpg",
+      "export_name": "evidence-photo.jpg",
+      "file_type": "jpg",
+      "size": 206,
+      "extents": [
+        {
+          "offset": 90112,
+          "length": 206
+        }
+      ],
+      "created_utc": "2026-03-01T12:00:00Z",
+      "modified_utc": "2026-03-01T12:00:00Z",
+      "accessed_utc": "2026-03-01T12:00:00Z",
+      "deleted": true,
+      "rationale": {
+        "confidence": "medium",
+        "summary": "MFT record intact and every extent reads back, but the record is deleted: the clusters are free and may since have been reallocated to another file",
+        "checks": [
+          {
+            "check": "mft_entry_in_use",
+            "passed": false,
+            "detail": "record is marked deleted; its clusters are free and may have been reallocated"
+          },
+          {
+            "check": "run_list_complete",
+            "passed": true,
+            "detail": "1 run(s) decoded to the declared end of the file"
+          },
+          {
+            "check": "allocation_covers_size",
+            "passed": true,
+            "detail": "206 byte(s) mapped for a 206 byte file"
+          },
+          {
+            "check": "extents_readable",
+            "passed": true,
+            "detail": "1 extent(s) sampled and readable"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ntfs-000019",
+      "method": "ntfs_mft",
+      "original_path": "<unknown>/orphan.txt",
+      "export_name": "orphan.txt",
+      "file_type": "txt",
+      "size": 45,
+      "extents": [
+        {
+          "offset": 98304,
+          "length": 45
+        }
+      ],
+      "created_utc": "2026-03-01T12:00:00Z",
+      "modified_utc": "2026-03-01T12:00:00Z",
+      "accessed_utc": "2026-03-01T12:00:00Z",
+      "deleted": true,
+      "rationale": {
+        "confidence": "medium",
+        "summary": "MFT record intact and every extent reads back, but the record is deleted: the clusters are free and may since have been reallocated to another file",
+        "checks": [
+          {
+            "check": "mft_entry_in_use",
+            "passed": false,
+            "detail": "record is marked deleted; its clusters are free and may have been reallocated"
+          },
+          {
+            "check": "run_list_complete",
+            "passed": true,
+            "detail": "1 run(s) decoded to the declared end of the file"
+          },
+          {
+            "check": "allocation_covers_size",
+            "passed": true,
+            "detail": "45 byte(s) mapped for a 45 byte file"
+          },
+          {
+            "check": "extents_readable",
+            "passed": true,
+            "detail": "1 extent(s) sampled and readable"
+          }
+        ]
+      }
+    },
+    {
+      "id": "carve-000000",
+      "method": "signature_carve",
+      "export_name": "carve-000000-at-90112.jpg",
+      "file_type": "jpg",
+      "size": 206,
+      "extents": [
+        {
+          "offset": 90112,
+          "length": 206
+        }
+      ],
+      "deleted": false,
+      "rationale": {
+        "confidence": "low",
+        "summary": "raw-carved jpg: header and the format's own terminator both present, so the extent is structurally bounded — but completeness is unverified and no original metadata exists",
+        "checks": [
+          {
+            "check": "signature_matched",
+            "passed": true,
+            "detail": "JPG header found at offset 90112"
+          },
+          {
+            "check": "footer_found",
+            "passed": true,
+            "detail": "the format's own terminator was found 206 bytes in"
+          },
+          {
+            "check": "within_size_cap",
+            "passed": true,
+            "detail": "206 bytes, under the type cap"
+          },
+          {
+            "check": "original_metadata",
+            "passed": false,
+            "detail": "carved from raw sectors: there is no original filename, path, owner or timestamp for this file, and none has been invented"
+          },
+          {
+            "check": "contiguity_verified",
+            "passed": false,
+            "detail": "carving assumes the file is contiguous on the media; if it was fragmented, the bytes after the first fragment belong to something else"
+          }
+        ]
+      }
+    },
+    {
+      "id": "carve-000001",
+      "method": "signature_carve",
+      "export_name": "carve-000001-at-81920.pdf",
+      "file_type": "pdf",
+      "size": 36,
+      "extents": [
+        {
+          "offset": 81920,
+          "length": 36
+        }
+      ],
+      "deleted": false,
+      "rationale": {
+        "confidence": "low",
+        "summary": "raw-carved pdf: header and the format's own terminator both present, so the extent is structurally bounded — but completeness is unverified and no original metadata exists",
+        "checks": [
+          {
+            "check": "signature_matched",
+            "passed": true,
+            "detail": "PDF header found at offset 81920"
+          },
+          {
+            "check": "footer_found",
+            "passed": true,
+            "detail": "the format's own terminator was found 36 bytes in"
+          },
+          {
+            "check": "within_size_cap",
+            "passed": true,
+            "detail": "36 bytes, under the type cap"
+          },
+          {
+            "check": "original_metadata",
+            "passed": false,
+            "detail": "carved from raw sectors: there is no original filename, path, owner or timestamp for this file, and none has been invented"
+          },
+          {
+            "check": "contiguity_verified",
+            "passed": false,
+            "detail": "carving assumes the file is contiguous on the media; if it was fragmented, the bytes after the first fragment belong to something else"
+          }
+        ]
+      }
+    }
+  ]
+}
