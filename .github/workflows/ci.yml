@@ -100,6 +100,35 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+  # The installers are the one part of this repo that runs on a machine before
+  # any of our own code does, and they are fetched over the network and piped
+  # into a shell. They get linted like source, because they are.
+  installers:
+    name: installer scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y dash shellcheck
+      # The claim in install.sh's header is that it is POSIX sh, not bash. dash
+      # is what makes that claim true or false: on Debian and Ubuntu it *is*
+      # /bin/sh, so a bashism here is a broken install for most Linux users.
+      - name: install.sh parses as POSIX sh
+        run: |
+          dash -n install.sh
+          bash -n install.sh
+          sh -n .github/scripts/build-libpcap.sh
+      - name: shellcheck
+        run: shellcheck --shell=sh install.sh .github/scripts/build-libpcap.sh scripts/publish-wiki.sh
+      - name: install.ps1 parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path ./install.ps1), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          Write-Host "install.ps1 parses cleanly"
+
   # The wiki is a separate git repository, so merging a docs change publishes
   # nothing on its own. It drifted five commits behind main before this job
   # existed. The Pages site needs no job: GitHub builds it from main/docs itself.
