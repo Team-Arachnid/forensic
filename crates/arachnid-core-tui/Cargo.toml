@@ -1,6 +1,6 @@
 [package]
 name = "arachnid-core-tui"
-description = "Terminal UI front end for Arachnid Core: collect, capture, parse, verify, report."
+description = "Terminal UI front end for the Arachnid Forensic suite: collect, capture, parse, verify, report, recover, sanitize."
 version.workspace = true
 edition.workspace = true
 # Above the workspace floor: ratatui 0.30 needs 1.88. Only this crate does; the
@@ -19,6 +19,7 @@ anyhow.workspace = true
 arachnid-collect.workspace = true
 arachnid-evidence.workspace = true
 arachnid-netcap.workspace = true
+arachnid-recover-core.workspace = true
 arachnid-report.workspace = true
 arachnid-sanitize-core.workspace = true
 serde.workspace = true

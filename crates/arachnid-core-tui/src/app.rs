@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use arachnid_netcap as netcap;
+use arachnid_recover_core as recover;
 use arachnid_sanitize_core as sanitize;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
@@ -37,13 +38,16 @@ pub enum AppScreen {
     /// Secure erasure. The only screen here that writes to a device rather than
     /// reading from one; see `screens::sanitize`.
     Sanitize,
+    /// File carving and recovery. Read-only against its source, like every
+    /// screen here except Sanitize; see `screens::recover`.
+    Recover,
     /// The chain-of-custody log, reached from Verify and Report. Not a tab: it
     /// is a drill-down, and `Esc` returns to whichever screen opened it.
     Custody,
 }
 
-/// The numbered tabs, in `1`..`7` order.
-pub const TABS: [AppScreen; 7] = [
+/// The numbered tabs, in `1`..`8` order.
+pub const TABS: [AppScreen; 8] = [
     AppScreen::Dashboard,
     AppScreen::Collect,
     AppScreen::Capture,
@@ -51,6 +55,7 @@ pub const TABS: [AppScreen; 7] = [
     AppScreen::Verify,
     AppScreen::Report,
     AppScreen::Sanitize,
+    AppScreen::Recover,
 ];
 
 impl AppScreen {
@@ -64,6 +69,7 @@ impl AppScreen {
             AppScreen::Verify => "Verify",
             AppScreen::Report => "Report",
             AppScreen::Sanitize => "Sanitize",
+            AppScreen::Recover => "Recover",
             AppScreen::Custody => "Chain of custody",
         }
     }
@@ -131,8 +137,9 @@ pub const GLOBAL: &[Binding] = &[
             k(KeyCode::Char('5')),
             k(KeyCode::Char('6')),
             k(KeyCode::Char('7')),
+            k(KeyCode::Char('8')),
         ],
-        label: "1-7",
+        label: "1-8",
         desc: "jump to screen",
         action: Global::Jump,
     },
@@ -269,6 +276,10 @@ pub struct Saved {
     pub recent_containers: Vec<String>,
     #[serde(default)]
     pub last_verify: Option<String>,
+    #[serde(default)]
+    pub recent_images: Vec<String>,
+    #[serde(default)]
+    pub last_recover_output: Option<String>,
 }
 
 const RECENTS: usize = 8;
@@ -377,6 +388,22 @@ pub struct SanitizeJob {
     pub dry_run: bool,
 }
 
+/// A recovery scan running in the background. Held here for the same reason as
+/// the wipe: carving a full disk is an hours-long read, and an operator should
+/// be able to walk away from the screen without losing it.
+///
+/// Read-only throughout, so unlike a wipe there is nothing dangerous about
+/// abandoning one — but the results are still worth not throwing away.
+pub struct RecoverJob {
+    pub cancel: Arc<AtomicBool>,
+    pub progress: Arc<recover::Progress>,
+    pub started: Instant,
+    pub source: String,
+    /// True while the job is an export rather than a scan; the two share the
+    /// slot because neither should run while the other does.
+    pub exporting: bool,
+}
+
 pub enum Msg {
     Init(Box<InitReport>),
     /// A collector is about to run, by name from `arachnid_collect::COLLECTORS`.
@@ -390,6 +417,9 @@ pub enum Msg {
     CustodyDone(Box<Result<screens::custody::Done, String>>),
     SanitizeDevices(Box<Result<Vec<sanitize::Device>, String>>),
     SanitizeDone(Box<Result<screens::sanitize::Done, String>>),
+    RecoverDevices(Box<Result<Vec<sanitize::Device>, String>>),
+    RecoverDone(Box<Result<recover::ScanResults, String>>),
+    RecoverExported(Box<Result<screens::recover::Exported, String>>),
     Toast(String, bool),
 }
 
@@ -414,6 +444,9 @@ pub enum Action {
     StartCapture,
     Export,
     CancelWipe,
+    CancelRecover,
+    StartRecover,
+    StartRecoverExport,
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +475,7 @@ pub struct App {
     pub busy: Option<Job>,
     pub capture: Option<Running>,
     pub sanitize_job: Option<SanitizeJob>,
+    pub recover_job: Option<RecoverJob>,
 
     pub tx: Sender<Msg>,
     rx: Receiver<Msg>,
@@ -454,6 +488,7 @@ pub struct App {
     pub report: screens::report::State,
     pub custody: screens::custody::State,
     pub sanitize: screens::sanitize::State,
+    pub recover: screens::recover::State,
 }
 
 impl App {
@@ -477,6 +512,7 @@ impl App {
             busy: None,
             capture: None,
             sanitize_job: None,
+            recover_job: None,
             tx,
             rx,
             dashboard: Default::default(),
@@ -487,6 +523,7 @@ impl App {
             report: screens::report::State::new(&saved),
             custody: Default::default(),
             sanitize: screens::sanitize::State::new(&saved),
+            recover: screens::recover::State::new(&saved),
             saved,
         }
     }
@@ -550,6 +587,13 @@ impl App {
         if self.capture.is_some() {
             return Some("a packet capture is running".into());
         }
+        if let Some(j) = &self.recover_job {
+            return Some(format!(
+                "a recovery {} of {} is running",
+                if j.exporting { "export" } else { "scan" },
+                j.source
+            ));
+        }
         self.busy
             .as_ref()
             .map(|j| format!("{} is running", j.label))
@@ -583,6 +627,16 @@ impl App {
 
     pub fn remember_pcap(&mut self, p: &Path) {
         Saved::remember(&mut self.saved.recent_pcaps, &p.display().to_string());
+        self.saved.save();
+    }
+
+    pub fn remember_image(&mut self, p: &Path) {
+        Saved::remember(&mut self.saved.recent_images, &p.display().to_string());
+        self.saved.save();
+    }
+
+    pub fn remember_recover_output(&mut self, p: &Path) {
+        self.saved.last_recover_output = Some(p.display().to_string());
         self.saved.save();
     }
 
@@ -658,7 +712,8 @@ impl App {
             Global::Prev => self.cycle(false),
             Global::Jump => {
                 if let KeyCode::Char(c) = key.code {
-                    // `global_for` already restricted this to '1'..='6'.
+                    // `global_for` already restricted this to the tab digits,
+                    // and `jump_covers_exactly_the_tabs` keeps the two in step.
                     let i = (c as u8 - b'1') as usize;
                     self.goto(TABS[i]);
                 }
@@ -707,6 +762,12 @@ impl App {
                 if let Some(j) = &self.sanitize_job {
                     j.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
+                // A recovery scan is read-only, so nothing is at risk on the
+                // media — but stopping it cleanly still lets the export it was
+                // feeding finish rather than leaving a half-written file.
+                if let Some(j) = &self.recover_job {
+                    j.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
                 self.quit = true;
             }
             Action::StopCapture => screens::capture::stop(self),
@@ -714,6 +775,9 @@ impl App {
             Action::StartCapture => screens::capture::start(self),
             Action::Export => screens::parse::export(self),
             Action::CancelWipe => screens::sanitize::cancel(self),
+            Action::CancelRecover => screens::recover::cancel(self),
+            Action::StartRecover => screens::recover::start(self),
+            Action::StartRecoverExport => screens::recover::export(self),
         }
     }
 
@@ -774,6 +838,9 @@ impl App {
             }
             Msg::SanitizeDevices(r) => screens::sanitize::adopt_devices(self, *r),
             Msg::SanitizeDone(r) => screens::sanitize::finished(self, *r),
+            Msg::RecoverDevices(r) => screens::recover::adopt_devices(self, *r),
+            Msg::RecoverDone(r) => screens::recover::finished(self, *r),
+            Msg::RecoverExported(r) => screens::recover::exported(self, *r),
             Msg::Toast(text, error) => self.toast(text, error),
         }
     }

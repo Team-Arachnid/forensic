@@ -88,6 +88,7 @@ version = "0.1.0"
 dependencies = [
  "arachnid-core-cli",
  "arachnid-core-tui",
+ "arachnid-recover-cli",
  "arachnid-sanitize-cli",
 ]
 
@@ -131,6 +132,7 @@ dependencies = [
  "arachnid-collect",
  "arachnid-evidence",
  "arachnid-netcap",
+ "arachnid-recover-core",
  "arachnid-report",
  "arachnid-sanitize-core",
  "ratatui",
@@ -165,6 +167,38 @@ dependencies = [
  "serde",
  "time",
  "tracing",
+]
+
+[[package]]
+name = "arachnid-recover-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arachnid-evidence",
+ "arachnid-recover-core",
+ "arachnid-sanitize-core",
+ "clap",
+ "ctrlc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "arachnid-recover-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arachnid-evidence",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "time",
+ "tracing",
+ "windows",
 ]
 
 [[package]]

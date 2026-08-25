@@ -169,8 +169,11 @@ values — and says so in `warnings`.
 ### Anti-forensics that predates collection
 
 A cleared utmp, a deleted unit file, a scheduled task removed before you
-arrived: already gone. **Arachnid records what is present; it does not recover
-what was removed.** That is the Arachnid Recover module's job.
+arrived: already gone. **Arachnid Core records what is present; it does not
+recover what was removed.** That is [Arachnid Recover](15-File-Recovery.md)'s
+job, against an acquired image — and what it recovers comes back labelled with
+how much of it can be trusted, because a deleted file's blocks are free and may
+have been reused since.
 
 The known specific case: Windows scheduled tasks are read from the on-disk
 `System32\Tasks` store, so a task registered only in the registry `TaskCache`

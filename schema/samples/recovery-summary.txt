@@ -1,0 +1,21 @@
+Arachnid Recover — scan summary
+===============================
+
+Source      test-fixtures/ntfs-deleted.img
+Size        131072 bytes
+Operator    sample-operator@lab
+Started     2026-03-01T12:00:00Z
+Finished    2026-03-01T12:00:04Z
+Passes      filesystem + raw carving
+
+Filesystems
+  ntfs at offset 0 — 3 entries
+
+Results     5 file(s)
+  High    1
+  Medium  2
+  Low     2
+
+High   filesystem metadata intact, every allocated byte read back
+Medium filesystem metadata found, data partly overwritten or truncated
+Low    raw-carved: structurally valid, completeness unverified

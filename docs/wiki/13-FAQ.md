@@ -94,8 +94,9 @@ notes.
 
 Because an analyst can hash, cite, diff and hand off a single artifact without
 unpacking anything, and because a multi-gigabyte memory image never has to be
-read into a container format to be stored. The Recover module consumes these
-directories directly.
+read into a container format to be stored. [Recover](15-File-Recovery.md) reads
+an acquired image straight out of one of these directories, and writes its own
+exports back into new ones.
 
 ### Can I add a file to a container afterwards?
 
@@ -329,8 +330,31 @@ is a convenience, never evidence.** Delete it freely; it costs two retyped paths
 erasure, verifies by read-back, and issues signed certificates; it is also
 screen `7` of the TUI. Full chapter: [Secure Erasure](14-Secure-Erasure.md).
 
-Recover (recovering what anti-forensics removed before collection) is specified
-but not implemented.
+### Where is `arachnid-recover`?
+
+**It ships too.** `arachnid-recover` recovers deleted files from an image or a
+read-only device by parsing NTFS and ext4 metadata and by carving raw sectors;
+it is also screen `8` of the TUI. Every result carries a confidence label and
+the checks behind it. Full chapter: [File Recovery](15-File-Recovery.md).
+
+It is read-only against its source, like Core — the trait its parsers read
+through has no write method at all, so it is not a promise but a property of the
+types.
+
+### Can Recover decrypt a recovered file?
+
+No, and it will not learn how. EFS-encrypted `$DATA`, ext4 per-file encryption
+and FileVault volumes are identified and **reported as encrypted**; recovery
+stops there. There is no key recovery, password guessing or brute force
+anywhere in the module.
+
+### Why is a deleted file never `High` confidence?
+
+Because its clusters are free. A clean read proves the bytes are readable, not
+that they are still *that file's* bytes — something may have reallocated and
+rewritten them since. Every check can pass and the label still caps at `Medium`,
+with the reason stated on the result. See
+[Confidence scoring](15-File-Recovery.md#confidence-scoring).
 
 ### Is Sanitize safe to allowlist alongside Core?
 

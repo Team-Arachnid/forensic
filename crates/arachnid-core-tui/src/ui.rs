@@ -181,9 +181,19 @@ fn banner_text(app: &App) -> Option<String> {
 fn tabs(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
     let here = TABS.iter().position(|&s| s == app.screen);
 
-    // Below 80 columns the full tab strip does not fit, so it collapses to a
-    // position indicator rather than being truncated into nonsense.
-    if area.width < 80 {
+    // Derived from the tab titles rather than a constant: a truncated strip
+    // silently loses the last tabs, and a magic number would have to be
+    // remembered every time a module is added. This cannot drift.
+    let needed: usize = " arachnid ".len()
+        + TABS
+            .iter()
+            .enumerate()
+            .map(|(i, t)| format!(" {}:{} ", i + 1, t.title()).chars().count())
+            .sum::<usize>();
+
+    // Too narrow for the full strip: collapse to a position indicator rather
+    // than truncate into nonsense.
+    if (area.width as usize) < needed {
         let label = match here {
             Some(i) => format!(
                 " arachnid  {}/{}  {}",

@@ -1,21 +1,22 @@
 //! Arachnid Forensic — the single entry point.
 //!
 //! One command to remember. Bare, it opens the terminal UI, which covers every
-//! module. With a subcommand it runs the same triage and erasure paths the
-//! standalone `arachnid-core` and `arachnid-sanitize` binaries expose, by
-//! calling into them directly — nothing is re-exec'd, so the release build
-//! stays a single file and the exit codes are the ones the callee returns.
+//! module. With a subcommand it runs the same triage, recovery and erasure paths
+//! the standalone `arachnid-core`, `arachnid-recover` and `arachnid-sanitize`
+//! binaries expose, by calling into them directly — nothing is re-exec'd, so the
+//! release build stays a single file and the exit codes are the ones the callee
+//! returns.
 //!
-//! Those two binaries still ship: SOAR playbooks and the release scripts refer
-//! to them by name, and their exit codes are a documented contract. This is a
-//! front door, not a replacement.
+//! Those binaries still ship: SOAR playbooks and the release scripts refer to
+//! them by name, and their exit codes are a documented contract. This is a front
+//! door, not a replacement.
 
 use std::ffi::OsString;
 use std::process::ExitCode;
 
 /// Everything `arachnid-core` answers to. Anything in this list is forwarded to
-/// it verbatim; `sanitize` goes to the erasure CLI; anything else is a usage
-/// error we answer ourselves rather than letting a callee guess at it.
+/// it verbatim; `sanitize` and `recover` go to their own CLIs; anything else is
+/// a usage error we answer ourselves rather than letting a callee guess at it.
 const CORE: [&str; 6] = [
     "collect",
     "capture",
@@ -26,7 +27,7 @@ const CORE: [&str; 6] = [
 ];
 
 const USAGE: &str = "\
-Arachnid Forensic — live triage, network forensics and secure erasure.
+Arachnid Forensic — live triage, network forensics, file recovery and secure erasure.
 
 USAGE
   arachnid-cli                     open the terminal UI (every module)
@@ -40,17 +41,21 @@ TRIAGE AND NETWORK FORENSICS
   verify         re-hash a container and check it against its signed log
   report         re-render a container's report
 
+FILE RECOVERY — read-only against the source
+  recover        scan | carve | list-results | export
+
 SECURE ERASURE — destroys data
   sanitize       list-devices | wipe | verify-wipe | cert
 
 Add --help to any command for its own options, e.g.
   arachnid-cli collect --help
+  arachnid-cli recover scan --help
   arachnid-cli sanitize wipe --help
 
 EXIT CODES
   Passed through from the command that ran. 0 success, 1 runtime error,
-  2 usage, 3 integrity failure or a refused wipe, 4 degraded or unverified,
-  5 erasure completed with unwritable regions.
+  2 usage, 3 integrity failure or a refused job, 4 degraded, unverified or
+  incomplete, 5 erasure completed with unwritable regions.
 
 For use by authorized analysts on systems they have permission to examine.
 ";
@@ -114,18 +119,21 @@ fn main() -> ExitCode {
 
         // Re-label argv[0] so the callee's own --help and usage errors name the
         // command the operator actually typed, not the crate behind it. The
-        // "sanitize" token itself is dropped; everything around it, globals
+        // module token itself is dropped; everything around it, globals
         // included, is passed through untouched.
-        Some("sanitize") => {
-            let at = command.expect("matched above").0;
-            let mut forwarded = vec![OsString::from("arachnid-cli sanitize")];
+        Some(module @ ("sanitize" | "recover")) => {
+            let at = command.as_ref().expect("matched above").0;
+            let mut forwarded = vec![OsString::from(format!("arachnid-cli {module}"))];
             forwarded.extend(
                 args.into_iter()
                     .enumerate()
                     .filter(|(i, _)| *i != 0 && *i != at)
                     .map(|(_, a)| a),
             );
-            arachnid_sanitize_cli::run_from(forwarded)
+            match module {
+                "recover" => arachnid_recover_cli::run_from(forwarded),
+                _ => arachnid_sanitize_cli::run_from(forwarded),
+            }
         }
 
         Some(cmd) if CORE.contains(&cmd) => {
@@ -162,6 +170,7 @@ mod tests {
         assert_eq!(at(&["collect"]).as_deref(), Some("collect"));
         assert_eq!(at(&["--json", "verify", "./ev"]).as_deref(), Some("verify"));
         assert_eq!(at(&["sanitize", "wipe"]).as_deref(), Some("sanitize"));
+        assert_eq!(at(&["recover", "scan"]).as_deref(), Some("recover"));
     }
 
     /// The value of a valued global is not the command. `--log report collect`
@@ -194,5 +203,6 @@ mod tests {
             );
         }
         assert!(USAGE.contains("sanitize"));
+        assert!(USAGE.contains("recover"));
     }
 }

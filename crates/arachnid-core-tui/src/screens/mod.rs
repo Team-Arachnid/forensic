@@ -9,6 +9,7 @@ pub mod collect;
 pub mod custody;
 pub mod dashboard;
 pub mod parse;
+pub mod recover;
 pub mod report;
 pub mod sanitize;
 pub mod verify;
@@ -30,6 +31,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
         AppScreen::Verify => verify::render(frame, area, app),
         AppScreen::Report => report::render(frame, area, app),
         AppScreen::Sanitize => sanitize::render(frame, area, app),
+        AppScreen::Recover => recover::render(frame, area, app),
         AppScreen::Custody => custody::render(frame, area, app),
     }
 }
@@ -46,6 +48,7 @@ pub fn on_key(app: &mut App, key: KeyEvent) -> bool {
         AppScreen::Verify => verify::on_key(app, key),
         AppScreen::Report => report::on_key(app, key),
         AppScreen::Sanitize => sanitize::on_key(app, key),
+        AppScreen::Recover => recover::on_key(app, key),
         AppScreen::Custody => custody::on_key(app, key),
     }
 }
@@ -61,6 +64,7 @@ pub fn keys(screen: AppScreen) -> &'static [(&'static str, &'static str)] {
         AppScreen::Verify => verify::KEYS,
         AppScreen::Report => report::KEYS,
         AppScreen::Sanitize => sanitize::KEYS,
+        AppScreen::Recover => recover::KEYS,
         AppScreen::Custody => custody::KEYS,
     }
 }
