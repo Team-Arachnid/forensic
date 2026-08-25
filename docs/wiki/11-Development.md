@@ -299,7 +299,7 @@ rather than working around the check.
 
 ## CI
 
-Five jobs, on every push to `main` and every PR:
+Six jobs, on every push to `main` and every PR:
 
 | Job | Runs |
 |---|---|
@@ -308,8 +308,9 @@ Five jobs, on every push to `main` and every PR:
 | **fmt** | `cargo fmt --all --check` |
 | **supply-chain** | `cargo-deny` + `rustsec/audit-check` |
 | **schema** | produces a **real container** and validates it against the published schemas |
+| **publish wiki** | pushes `docs/wiki/` to the GitHub wiki. Push to `main` only |
 
-Two details worth knowing:
+Three details worth knowing:
 
 **No `RUSTFLAGS` in the workflow env.** The environment variable *replaces*
 `target.*.rustflags` from `.cargo/config.toml` rather than adding to it, which
@@ -321,6 +322,15 @@ are denied through clippy's own `-- -D warnings`, which is appended instead.
 provides the import library, which is all the link step needs. Leaving the
 runtime out makes CI a standing check that the **no-Npcap path works** — which
 is how most analyst workstations are configured.
+
+**Documentation publishes two different ways, and only one is automatic by
+itself.** The Pages site at `arachnidgs.github.io/forensic` is built by GitHub
+from `main` + `/docs`, so it updates on merge with no job involved. The **wiki
+is a separate git repository** (`<repo>.wiki.git`) that nothing merges into —
+`scripts/publish-wiki.sh` pushes to it, and the `publish wiki` job is what runs
+that script. Before the job existed the script was manual, and the published
+wiki sat five commits behind `main`. Both sources live in `docs/`; editing a
+page and merging is all either needs.
 
 **The safety rails get their own CI step.** `cargo test -p arachnid-sanitize-core
 --test safety_rails` runs separately from the workspace suite, against
