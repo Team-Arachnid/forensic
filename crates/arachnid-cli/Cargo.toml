@@ -14,7 +14,20 @@ name = "arachnid-cli"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
 arachnid-core-cli.workspace = true
 arachnid-core-tui.workspace = true
+arachnid-netcap.workspace = true
 arachnid-recover-cli.workspace = true
 arachnid-sanitize-cli.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+ed25519-dalek = "3.0"
+base64 = { version = "0.23.1", default-features = false, features = ["std"] }
+ureq = { version = "3.4.0", default-features = false, features = ["rustls"] }
+
+[target.'cfg(windows)'.dependencies]
+# Only for `doctor`'s privilege line: IsUserAnAdmin is the one-call form of the
+# CheckTokenMembership dance. Linux reads /proc/self/status and needs nothing.
+windows = { version = "0.62", features = ["Win32_UI_Shell"] }
