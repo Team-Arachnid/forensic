@@ -48,7 +48,7 @@ TUI), and Arachnid Sanitize (`arachnid-sanitize`, plus screen 7).
 
 ```bash
 # Read it first, then run it — the recommended path
-curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
@@ -62,16 +62,24 @@ A project making that request should not also ask you to pipe an unread script
 into a shell. So the inspect-then-run path is the documented one, and the
 one-liner below is offered as what it is: the same thing, minus the inspection.
 
-The script is [checked into this repository](install.sh), so the key it pins is
-reviewable in version control history and not just at whatever the CDN served
-you. Diff the two if you like.
+There is no separate download host to trust: the URL serves `install.sh`
+straight out of this repository's `main` branch. The script you run and the
+script you can [read here](install.sh) are the same object, with the same commit
+history behind them — so "review it before running it" means reading a file you
+can also `git log`.
+
+Swap `main` for a tag to pin a fixed version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/v0.1.0/install.sh -o install.sh
+```
 
 ### 1. Inspect, then run (recommended)
 
 **macOS and Linux**
 
 ```bash
-curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
@@ -79,7 +87,7 @@ sh install.sh
 **Windows (PowerShell)**
 
 ```powershell
-irm https://install.arachnid-forensic.dev/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
 notepad install.ps1
 .\install.ps1
 ```
@@ -87,11 +95,11 @@ notepad install.ps1
 ### 2. One line (the same thing, without the reading)
 
 ```bash
-curl -fsSL https://install.arachnid-forensic.dev/install.sh | sh          # macOS, Linux
+curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh | sh          # macOS, Linux
 ```
 
 ```powershell
-irm https://install.arachnid-forensic.dev/install.ps1 | iex               # Windows
+irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 | iex               # Windows
 ```
 
 Identical behaviour, with one exception: a piped install has no terminal to

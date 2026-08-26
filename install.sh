@@ -6,7 +6,7 @@
 # host, and a project making that request should not also ask you to pipe an
 # unread script into a shell.
 #
-#   curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+#   curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
 #   less install.sh
 #   sh install.sh
 #

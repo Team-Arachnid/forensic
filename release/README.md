@@ -20,9 +20,10 @@ SHA256SUMS.minisig  ──verifies──►  SHA256SUMS
 ```
 
 Everything reduces to one question: **is the key pinned in the installer the
-project's real key?** That is why the installers are checked into this
-repository rather than only living at a URL — the pin is reviewable in version
-control history, not just at whatever the CDN served you.
+project's real key?** The installers are served straight from this repository —
+`raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh` — so there is no
+separate download host that could serve a different pin, and `git log install.sh`
+is the audit trail for every change to it.
 
 `arachnid-cli self update` verifies the same signature with the same key,
 embedded at build time, so an update is checked the same way a first install is.

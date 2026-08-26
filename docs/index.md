@@ -66,13 +66,13 @@ decision and a separate habit — `--dry-run` first, every time.
 
 ```bash
 # macOS, Linux — read it first, then run it
-curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
 less install.sh && sh install.sh
 ```
 
 ```powershell
 # Windows
-irm https://install.arachnid-forensic.dev/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
 notepad install.ps1; .\install.ps1
 ```
 
