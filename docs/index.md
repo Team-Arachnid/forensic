@@ -62,6 +62,27 @@ decision and a separate habit — `--dry-run` first, every time.
 
 </div>
 
+## Install
+
+```bash
+# macOS, Linux — read it first, then run it
+curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+less install.sh && sh install.sh
+```
+
+```powershell
+# Windows
+irm https://install.arachnid-forensic.dev/install.ps1 -OutFile install.ps1
+notepad install.ps1; .\install.ps1
+```
+
+The installer verifies a signature over the digest file, then the digest of the
+binary, and aborts on either failure having installed nothing. Then run
+`arachnid-cli doctor`.
+
+No release signing key has been generated yet, so the installers currently stop
+and say so; build from source in the meantime.
+
 ## The suite
 
 | Module | Status |

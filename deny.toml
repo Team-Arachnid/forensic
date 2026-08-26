@@ -66,12 +66,21 @@ license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# Nothing in this tool should be reaching the network on its own account, or
-# loading code at runtime. These are the crates that would enable it.
+# The engine crates reach the network only through the capture library, and
+# nothing here loads code at runtime. These are the crates that would change
+# that quietly.
+#
+# One exception, added deliberately and scoped to one crate: `arachnid-cli`
+# links `ureq` (rustls, no OpenSSL) for the update check and `self update`.
+# Those are the only outbound requests in the suite, they are documented in
+# THREAT_MODEL.md and SOC-ALLOWLISTING §5a, and both are disableable. The
+# general-purpose HTTP stacks stay denied — a full client in a triage binary is
+# a much larger surface than a version check needs, and denying them is what
+# stops one arriving by accident inside something else.
 deny = [
-    { name = "openssl-sys", reason = "no TLS client belongs in a triage binary" },
-    { name = "reqwest", reason = "Arachnid Core never makes outbound requests" },
-    { name = "hyper", reason = "Arachnid Core never makes outbound requests" },
+    { name = "openssl-sys", reason = "TLS in this suite is rustls via ureq in arachnid-cli only; an OpenSSL link would be a new native dependency on every target" },
+    { name = "reqwest", reason = "the update check needs a version string, not an HTTP framework; see THREAT_MODEL.md" },
+    { name = "hyper", reason = "the update check needs a version string, not an HTTP framework; see THREAT_MODEL.md" },
     # Banned at runtime. `wrappers` permits the two build-time uses, both of
     # which run on the build host and contribute no code to the shipped binary:
     #   clang-sys  - bindgen loads libclang to generate FFI bindings

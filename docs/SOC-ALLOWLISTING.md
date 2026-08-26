@@ -73,9 +73,17 @@ Arachnid Core contains **no**:
 - process injection, hooking, or memory writes into other processes
 - exploit or privilege-escalation code — it uses the privilege it was given
 - persistence for itself: it installs no service, task, key, or unit
-- outbound network connections of any kind (`reqwest` and `hyper` are denied
-  at the dependency level; there is no update check and no telemetry)
+- telemetry, analytics, usage reporting, crash reporting, or any endpoint that
+  receives data from you. There is nowhere for such data to go: this project
+  operates no server
 - packet injection or interception — capture is receive-only
+
+`arachnid-core`, `arachnid-recover` and `arachnid-sanitize` additionally make
+**no outbound network connections of any kind**. `arachnid-cli` makes exactly
+one — a daily version check, on interactive terminals only, which installs
+nothing and is disabled by a flag or an environment variable. It is specified in
+full in [§5a](#5a-the-update-check-arachnid-cli-only). `reqwest` and `hyper`
+remain denied at the dependency level.
 
 The binary is deliberately inspectable: `strings`, `sigcheck`, and a
 disassembler all work on it, and the release script **fails the build** if the
@@ -295,7 +303,9 @@ acquisition, not the live disk.
 
 | Behaviour | Detail |
 |---|---|
-| Outbound connections | **None.** No telemetry, no update check, no indicator lookup, no DNS resolution of collected indicators. |
+| Outbound connections | **One, from `arachnid-cli` only, and only on an interactive terminal.** A daily version check against `api.github.com`. See [§5a](#5a-the-update-check) — this paragraph used to read "none", and changed when `arachnid-cli` gained `self update`. |
+| Telemetry / analytics | **None.** No usage counters, no machine identifiers, no install ping, no crash reporting. |
+| Indicator lookup | **None.** A domain or address found in captured traffic is never resolved, queried or submitted anywhere. |
 | Listening sockets | None. |
 | Packet capture | Only under `capture`, only on the interface you name with `--device`. Uses libpcap (Linux) / Npcap (Windows). |
 | Promiscuous mode | **Off by default.** `--promiscuous` is opt-in because it changes interface receive mode, which is an observable host change. |
@@ -306,6 +316,64 @@ Expected EDR observations during `capture`: `AF_PACKET` socket creation and
 `SO_ATTACH_FILTER` (Linux), or a handle to `\Device\NPCAP\<iface>` (Windows).
 Both are inherent to packet capture and are the reason capture is a separate
 subcommand you can decline to allow.
+
+`arachnid-core`, `arachnid-recover` and `arachnid-sanitize` — the standalone
+binaries — make **no outbound connection at all**. The paragraph below applies
+solely to the `arachnid-cli` front end.
+
+---
+
+## 5a. The update check (`arachnid-cli` only)
+
+`arachnid-cli` performs one version check. It is the only unprompted outbound
+request anywhere in the suite, so here is the whole of it.
+
+| | |
+|---|---|
+| Request | `GET https://api.github.com/repos/ArachnidGs/forensic/releases/latest` |
+| Sends | the URL and `User-Agent: arachnid-cli/<version>`. Nothing else |
+| When | on launch, **only if stderr is a terminal**, at most once per 24 hours |
+| Timeout | 500 ms, hard |
+| On failure | silent. No message, no delay past the cap, no change to the exit code |
+| Effect | at most one line on **stderr**, then the operator's command runs normally |
+| Installs anything | **No.** Never, under any circumstance. `self update` is a separate command the operator runs |
+
+### What this means for a monitored estate
+
+**Scripted and scheduled runs make no network call at all.** The TTY condition
+is the load-bearing part: a SOAR playbook, a cron job, a CI pipeline and any
+piped invocation all skip the check entirely. If your endpoints run this
+non-interactively, the observable network behaviour is unchanged from the
+paragraph this section replaced.
+
+An interactive analyst session will show at most one TLS connection to
+`api.github.com` per day per user.
+
+### Suppressing it
+
+Either of these removes the request completely, and both are honoured silently:
+
+```
+ARACHNID_NO_UPDATE_CHECK=1          # environment, estate-wide if you set it there
+arachnid-cli --no-update-check …    # per invocation
+```
+
+Blocking `api.github.com` at the egress point has the same effect from the
+tool's side: the check fails silently within its timeout and nothing else
+changes.
+
+`arachnid-cli doctor` states which mode it is in, so an operator can confirm the
+suppression rather than assume it.
+
+### What it is not
+
+It is not telemetry. Nothing is reported to us — the request is a read of a
+public API endpoint, and the response is a version string. There is no endpoint
+anywhere in this project that receives data.
+
+`arachnid-cli self update` and the installers make further requests, but only
+because the operator ran them. Both are documented byte for byte in
+[THREAT_MODEL.md](../THREAT_MODEL.md).
 
 ---
 

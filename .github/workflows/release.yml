@@ -1,0 +1,196 @@
+name: Release
+
+# Tag-driven. Nothing here runs on a normal push: a release is a deliberate act,
+# and the artifacts it produces are what the installer and `self update` will
+# hand people, sight unseen, as a forensic tool.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and attach artifacts to"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # The version of libpcap built from source for the targets that need it.
+  # Pinned, and its digest checked below: a release binary must not depend on
+  # whatever tcpdump.org served that morning.
+  PCAP_VERSION: "1.10.5"
+  PCAP_SHA256: "37ced90a19a302a7f32e458224a00c365c117905c2cd35ac544b6880a81488f0"
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # --- libpcap ---------------------------------------------------------
+      #
+      # `arachnid-netcap` links libpcap, so every target needs one for its own
+      # architecture and libc. macOS ships it. Windows needs the Npcap SDK's
+      # import library. Linux gets the distro package where the host matches,
+      # and a source build where it does not — no distribution ships a musl or
+      # cross-arch libpcap.
+
+      - name: libpcap (native glibc)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+
+      - name: libpcap (musl, from source)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools
+          ./.github/scripts/build-libpcap.sh musl-gcc "$PWD/pcap-prefix"
+          echo "LIBPCAP_LIBDIR=$PWD/pcap-prefix/lib" >> "$GITHUB_ENV"
+          echo "LIBPCAP_VER=$PCAP_VERSION" >> "$GITHUB_ENV"
+
+      - name: libpcap (aarch64 cross, from source)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          ./.github/scripts/build-libpcap.sh aarch64-linux-gnu-gcc "$PWD/pcap-prefix" aarch64-linux-gnu
+          echo "LIBPCAP_LIBDIR=$PWD/pcap-prefix/lib" >> "$GITHUB_ENV"
+          echo "LIBPCAP_VER=$PCAP_VERSION" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: Npcap SDK
+        if: runner.os == 'Windows'
+        run: |
+          curl -fsSLO https://npcap.com/dist/npcap-sdk-1.13.zip
+          Expand-Archive npcap-sdk-1.13.zip -DestinationPath $env:RUNNER_TEMP\npcap-sdk
+          "LIB=$env:RUNNER_TEMP\npcap-sdk\Lib\x64;$env:LIB" >> $env:GITHUB_ENV
+
+      # --- build -----------------------------------------------------------
+
+      - name: Build
+        shell: bash
+        env:
+          # Stamped into the binary so `version` and `doctor` can name the
+          # commit an artifact came from, and so a support question does not
+          # start with "which build is that".
+          ARACHNID_BUILD_HASH: ${{ github.sha }}
+          # The public half of the release key, embedded so `self update` can
+          # verify a download without fetching its own trust anchor.
+          ARACHNID_MINISIGN_PUBKEY: ${{ vars.MINISIGN_PUBKEY }}
+        run: cargo build --release --locked --target ${{ matrix.target }} -p arachnid-cli
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release/arachnid-cli.exe" \
+               "dist/arachnid-cli-${{ matrix.target }}.exe"
+          else
+            cp "target/${{ matrix.target }}/release/arachnid-cli" \
+               "dist/arachnid-cli-${{ matrix.target }}"
+          fi
+
+      # The tool must stay inspectable — no packing, no obfuscation. If our own
+      # subcommand names are not visible to `strings`, something in the pipeline
+      # is hiding the binary from the analysts we ask to allowlist it.
+      - name: Verify the binary is inspectable
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          bin=$(ls dist/arachnid-cli-*)
+          for marker in collect recover sanitize doctor "Arachnid Forensic"; do
+            strings "$bin" | grep -qF "$marker" \
+              || { echo "FAIL: '$marker' is not visible to strings" >&2; exit 1; }
+          done
+          echo "inspectable: confirmed"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # One job collects every artifact, hashes them together, and signs the digest
+  # file once. Signing each binary separately would mean six signatures to check
+  # instead of one, and the installer would have to fetch a different one per
+  # platform.
+  publish:
+    name: checksums, signature, release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: staging
+
+      - name: Flatten
+        run: |
+          mkdir -p dist
+          find staging -type f -exec cp {} dist/ \;
+          ls -l dist
+
+      - name: SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum arachnid-cli-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Sign SHA256SUMS
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "::error::MINISIGN_SECRET_KEY is not set. A release without a signature is" \
+                 "one the installer will refuse to install; see release/README.md."
+            exit 1
+          fi
+          sudo apt-get update && sudo apt-get install -y minisign
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > minisign.key
+          # Legacy (non-prehashed) mode: a plain Ed25519 signature over the file,
+          # which `arachnid-cli self update` verifies with ed25519-dalek rather
+          # than carrying a second hash implementation. Do not add -H.
+          printf '%s\n' "$MINISIGN_PASSWORD" \
+            | minisign -S -s minisign.key -m dist/SHA256SUMS \
+                -t "arachnid-forensic ${{ github.ref_name }}"
+          shred -u minisign.key
+          minisign -Vm dist/SHA256SUMS -P "${{ vars.MINISIGN_PUBKEY }}"
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --title "$TAG" --generate-notes
+          gh release upload "$TAG" dist/* --clobber

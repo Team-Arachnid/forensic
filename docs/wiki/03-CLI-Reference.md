@@ -56,9 +56,37 @@ CLIs, each fully documented on its own page rather than duplicated here:
 | `arachnid-recover` | `scan` · `carve` · `list-results` · `export` | [File Recovery](15-File-Recovery.md#cli-reference) |
 | `arachnid-sanitize` | `list-devices` · `wipe` · `verify-wipe` · `cert` | [Secure Erasure](14-Secure-Erasure.md#cli-reference) |
 
-`arachnid-cli` is the single entry point over all three: bare it opens the TUI,
-and `arachnid-cli <command>` runs any command above directly. It dispatches
-in-process, so exit codes are the ones the underlying command returns.
+### `arachnid-cli`, the single entry point
+
+Bare it opens the TUI. Otherwise it takes a module group and forwards
+everything after it to that module, in-process — so `--help`, the flags and the
+exit codes are the module's own, not a second copy that can drift from them.
+
+```
+arachnid-cli                             open the terminal UI
+arachnid-cli core     <command>          collect | capture | parse-pcap | verify | report
+arachnid-cli recover  <command>          scan | carve | list-results | export
+arachnid-cli sanitize <command>          list-devices | wipe | verify-wipe | cert
+arachnid-cli tui                         the TUI, explicitly
+
+arachnid-cli doctor                      check this installation; --json for a report
+arachnid-cli version                     version, build hash, release signing key
+arachnid-cli self update [--dry-run]     download, verify and replace this binary
+arachnid-cli self uninstall [--yes]      remove it and revert the installer's PATH line
+
+arachnid-cli --no-update-check <cmd>     skip the launch-time version check
+```
+
+The five `core` commands also work **without** the `core` prefix —
+`arachnid-cli collect -o ./ev` — which is the form every script and doc page
+written before the groups existed uses. That is a compatibility promise, not an
+accident.
+
+| Command | Documented in |
+|---|---|
+| `doctor` | [Getting Started § Checking the installation](01-Getting-Started.md#checking-the-installation) |
+| `self update` / the version check | [Getting Started § Updates](01-Getting-Started.md#updates), [THREAT_MODEL.md](../../THREAT_MODEL.md) |
+| `self uninstall` | [Getting Started § Updates](01-Getting-Started.md#updates) |
 
 ---
 

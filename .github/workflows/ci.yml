@@ -66,15 +66,44 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: x86_64-pc-windows-msvc, x86_64-pc-windows-gnu
           components: clippy
       - run: sudo apt-get update && sudo apt-get install -y libpcap-dev
       - uses: Swatinem/rust-cache@v2
       # clippy, not check: lints that only fire on cfg(windows) code are
       # invisible to a Linux build, and waiting for the windows-latest job to
-      # find them costs a full CI round trip. Now also covers the Windows
+      # find them costs a full CI round trip. Covers the Windows
       # device-enumeration and raw-device ioctl paths in arachnid-sanitize-core.
-      - run: cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+      #
+      # arachnid-cli is excluded, and only from this job. It links ureq for the
+      # update check, which pulls rustls and ring, and ring's build script needs
+      # a real MSVC toolchain that this runner does not have — it fails with
+      # "GNU compiler is not supported for this target" before any of our code
+      # is looked at. Cross-compiling it would mean cargo-xwin and a Windows SDK
+      # on a Linux runner, which is a lot of moving parts to buy back a few
+      # minutes of feedback.
+      #
+      # Nothing is unlinted as a result: the windows-latest leg of the `test`
+      # job runs clippy over the whole workspace natively, and that is the
+      # authority. This job is the fast path, not the gate.
+      - run: >
+          cargo clippy --workspace --exclude arachnid-cli --all-targets
+          --target x86_64-pc-windows-msvc -- -D warnings
+
+      # arachnid-cli's own cfg(windows) code — the self-update file swap, the
+      # privilege probe — would otherwise reach a linter only on the
+      # windows-latest runner, and a `useless_format` in a branch nobody
+      # compiles is exactly the bug that gets found there instead of here.
+      #
+      # windows-gnu shares the `windows` cfg predicate with windows-msvc, so it
+      # lints the same code, and ring builds against mingw where it refuses the
+      # MSVC target without an SDK. One apt package instead of cargo-xwin.
+      - name: Windows-only code in arachnid-cli
+        run: |
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+          rustup target add x86_64-pc-windows-gnu
+          cargo clippy -p arachnid-cli --all-targets \
+            --target x86_64-pc-windows-gnu -- -D warnings
 
   fmt:
     runs-on: ubuntu-latest
@@ -99,6 +128,54 @@ jobs:
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  # The installers are the one part of this repo that runs on a machine before
+  # any of our own code does, and they are fetched over the network and piped
+  # into a shell. They get linted like source, because they are.
+  installers:
+    name: installer scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y dash shellcheck
+      # The claim in install.sh's header is that it is POSIX sh, not bash. dash
+      # is what makes that claim true or false: on Debian and Ubuntu it *is*
+      # /bin/sh, so a bashism here is a broken install for most Linux users.
+      - name: install.sh parses as POSIX sh
+        run: |
+          dash -n install.sh
+          bash -n install.sh
+          sh -n .github/scripts/build-libpcap.sh
+      - name: shellcheck
+        run: shellcheck --shell=sh install.sh .github/scripts/build-libpcap.sh scripts/publish-wiki.sh
+      - name: install.ps1 parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path ./install.ps1), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          Write-Host "install.ps1 parses cleanly"
+
+  # The wiki is a separate git repository, so merging a docs change publishes
+  # nothing on its own. It drifted five commits behind main before this job
+  # existed. The Pages site needs no job: GitHub builds it from main/docs itself.
+  wiki:
+    name: publish wiki
+    if: github.event_name == 'push'
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync docs/wiki to the GitHub wiki
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: ./scripts/publish-wiki.sh
 
   schema:
     name: schemas match output
