@@ -305,7 +305,7 @@ Seven jobs, on every push to `main` and every PR:
 | Job | Runs |
 |---|---|
 | **test** (ubuntu + windows) | `cargo clippy --workspace --all-targets -- -D warnings`, then `cargo test --workspace`, then the safety-rail suite on its own |
-| **cross typecheck** | clippy for `x86_64-pc-windows-msvc` from Linux |
+| **cross typecheck** | clippy for `x86_64-pc-windows-msvc` from Linux, plus `arachnid-cli` against `x86_64-pc-windows-gnu` |
 | **fmt** | `cargo fmt --all --check` |
 | **supply-chain** | `cargo-deny` + `rustsec/audit-check` |
 | **schema** | produces a **real container** and validates it against the published schemas |
@@ -330,6 +330,16 @@ are denied through clippy's own `-- -D warnings`, which is appended instead.
 provides the import library, which is all the link step needs. Leaving the
 runtime out makes CI a standing check that the **no-Npcap path works** — which
 is how most analyst workstations are configured.
+
+**The cross typecheck uses two Windows targets, for one dependency's sake.**
+`arachnid-cli` links `ureq`, which pulls `rustls` and `ring`, and ring's build
+script refuses `x86_64-pc-windows-msvc` on a Linux runner without an MSVC
+toolchain. So that crate is excluded from the msvc pass and linted against
+`x86_64-pc-windows-gnu` instead, which shares the `windows` cfg predicate and
+builds against mingw. Nothing goes unlinted: the windows-latest leg of `test`
+covers the whole workspace natively and is the authority — the cross job is the
+fast path. The split exists because a lint in a branch no Linux build compiles
+is exactly the bug that otherwise gets found a full CI round trip later.
 
 **The installers are linted as source, because they are.** `install.sh` claims
 in its header to be POSIX sh rather than bash, and dash is what makes that claim

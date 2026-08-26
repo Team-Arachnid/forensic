@@ -463,9 +463,8 @@ fn install_over(exe: &Path, bytes: &[u8]) -> Result<()> {
     {
         let old = dir.join(".arachnid-cli.old");
         let _ = std::fs::remove_file(&old);
-        std::fs::rename(exe, &old).with_context(|| {
-            format!("move the running binary aside; is another arachnid-cli running?")
-        })?;
+        std::fs::rename(exe, &old)
+            .context("move the running binary aside; is another arachnid-cli running?")?;
         if let Err(e) = std::fs::rename(&staged, exe) {
             // Put it back rather than leaving the operator with no binary.
             let _ = std::fs::rename(&old, exe);

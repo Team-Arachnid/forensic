@@ -66,15 +66,44 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: x86_64-pc-windows-msvc, x86_64-pc-windows-gnu
           components: clippy
       - run: sudo apt-get update && sudo apt-get install -y libpcap-dev
       - uses: Swatinem/rust-cache@v2
       # clippy, not check: lints that only fire on cfg(windows) code are
       # invisible to a Linux build, and waiting for the windows-latest job to
-      # find them costs a full CI round trip. Now also covers the Windows
+      # find them costs a full CI round trip. Covers the Windows
       # device-enumeration and raw-device ioctl paths in arachnid-sanitize-core.
-      - run: cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+      #
+      # arachnid-cli is excluded, and only from this job. It links ureq for the
+      # update check, which pulls rustls and ring, and ring's build script needs
+      # a real MSVC toolchain that this runner does not have — it fails with
+      # "GNU compiler is not supported for this target" before any of our code
+      # is looked at. Cross-compiling it would mean cargo-xwin and a Windows SDK
+      # on a Linux runner, which is a lot of moving parts to buy back a few
+      # minutes of feedback.
+      #
+      # Nothing is unlinted as a result: the windows-latest leg of the `test`
+      # job runs clippy over the whole workspace natively, and that is the
+      # authority. This job is the fast path, not the gate.
+      - run: >
+          cargo clippy --workspace --exclude arachnid-cli --all-targets
+          --target x86_64-pc-windows-msvc -- -D warnings
+
+      # arachnid-cli's own cfg(windows) code — the self-update file swap, the
+      # privilege probe — would otherwise reach a linter only on the
+      # windows-latest runner, and a `useless_format` in a branch nobody
+      # compiles is exactly the bug that gets found there instead of here.
+      #
+      # windows-gnu shares the `windows` cfg predicate with windows-msvc, so it
+      # lints the same code, and ring builds against mingw where it refuses the
+      # MSVC target without an SDK. One apt package instead of cargo-xwin.
+      - name: Windows-only code in arachnid-cli
+        run: |
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+          rustup target add x86_64-pc-windows-gnu
+          cargo clippy -p arachnid-cli --all-targets \
+            --target x86_64-pc-windows-gnu -- -D warnings
 
   fmt:
     runs-on: ubuntu-latest
