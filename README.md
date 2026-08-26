@@ -27,7 +27,7 @@ One command covers all of it, and one line installs it:
 
 ```bash
 # Read it first, then run it. See Install for why that is the documented path.
-curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
 less install.sh && sh install.sh
 ```
 
@@ -123,21 +123,24 @@ code loading, self-persistence, packet injection or interception.
 
 ```bash
 # macOS, Linux — read it first, then run it
-curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
 less install.sh && sh install.sh
 ```
 
 ```powershell
 # Windows
-irm https://install.arachnid-forensic.dev/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
 notepad install.ps1; .\install.ps1
 ```
 
 The one-liners (`… | sh`, `… | iex`) do the same thing without the reading step,
 and are documented second on purpose. A project that asks you to allowlist a
 forensic binary should not also ask you to pipe an unread script into a shell.
-Both scripts are [checked into this repository](install.sh), so the signing key
-they pin is reviewable in version control rather than only at the URL.
+The URL is the file: it serves `install.sh` straight out of this repository's
+`main` branch, so the script you run and the script you can review
+[here](install.sh) are the same object, with the same history. Pin a tag instead
+of `main` if you want a fixed version:
+`…/ArachnidGs/forensic/v0.1.0/install.sh`.
 
 The installer verifies a **signature over the digest file, then the digest of
 the binary**, and aborts on either failure having installed nothing. It never

@@ -31,14 +31,14 @@
 
 ```bash
 # macOS, Linux — read it first, then run it
-curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
 less install.sh
 sh install.sh
 ```
 
 ```powershell
 # Windows
-irm https://install.arachnid-forensic.dev/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
 notepad install.ps1
 .\install.ps1
 ```
@@ -46,8 +46,10 @@ notepad install.ps1
 The one-line piped forms (`… | sh`, `… | iex`) are the same thing without the
 reading step. They are documented second on purpose: a project that asks you to
 allowlist a forensic binary should not also ask you to pipe an unread script
-into a shell. Both scripts are checked into the repository, so the signing key
-they pin is reviewable in version control rather than only at the URL.
+into a shell. There is no separate download host: the URL serves the script out
+of this repository's `main` branch, so what you run and what you can review are
+the same file with the same history. Swap `main` for a tag —
+`…/ArachnidGs/forensic/v0.1.0/install.sh` — to pin a version.
 
 The installer verifies a signature over the digest file, then the digest of the
 binary, and aborts on either failure having installed nothing. It installs to a

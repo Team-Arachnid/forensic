@@ -8,7 +8,7 @@
     host, and a project making that request should not also ask you to pipe an
     unread script into a shell.
 
-        irm https://install.arachnid-forensic.dev/install.ps1 -OutFile install.ps1
+        irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
         notepad install.ps1
         .\install.ps1
 

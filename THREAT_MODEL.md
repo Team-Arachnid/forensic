@@ -69,9 +69,15 @@ present — that fallback would prove the download was not corrupted in transit
 and nothing whatsoever about who produced it. If `minisign` is missing, the
 installer stops and tells you how to install it, or how to verify by hand.
 
-The pin is why both installers are **checked into this repository** rather than
-only existing at a URL. You can review the key in version control history and
-compare it against what the CDN serves you.
+The pin is reviewable because the installers **are** this repository's files:
+`raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh` serves
+`install.sh` from `main`. There is no separate download host that could serve
+something else, and no CDN cache between the two — the bytes you fetch are the
+bytes in the commit, and `git log install.sh` is the audit trail for the key
+pin.
+
+Pin a tag rather than `main` if your policy requires a fixed artifact:
+`raw.githubusercontent.com/ArachnidGs/forensic/v0.1.0/install.sh`.
 
 ### Current status
 
