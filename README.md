@@ -23,15 +23,20 @@ arachnid-core report      ./ev-host01 --format html -o triage.html
 arachnid-tui                                          # the same engine, driven from a TUI
 ```
 
-One command covers all of it:
+One command covers all of it, and one line installs it:
 
 ```bash
-cargo install --path crates/arachnid-cli
+# Read it first, then run it. See Install for why that is the documented path.
+curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+less install.sh && sh install.sh
+```
 
+```bash
 arachnid-cli                                          # the TUI, every module
-arachnid-cli collect -o ./ev-host01                   # or any command directly
+arachnid-cli core collect -o ./ev-host01              # or any command directly
 arachnid-cli recover scan -i disk.img -o ./rec
 arachnid-cli sanitize list-devices
+arachnid-cli doctor                                   # why isn't it working?
 ```
 
 **Arachnid Recover** pulls deleted files back out of an image or a read-only
@@ -62,6 +67,7 @@ The three modules are one workflow: **Core** acquires, **Recover** extracts,
 
 - [Documentation](#documentation)
 - [Design stance](#design-stance)
+- [Install](#install)
 - [Install and build](#install-and-build)
 - [Usage](#usage)
 - [Terminal UI](#terminal-ui)
@@ -80,7 +86,8 @@ The three modules are one workflow: **Core** acquires, **Recover** extracts,
 
 | Where | What |
 |---|---|
-| **[Wiki](docs/wiki/Home.md)** | full reference: concepts, CLI, TUI, container format, collectors, network forensics, schemas, workflows, threat model, secure erasure, development, troubleshooting, FAQ |
+| **[Wiki](docs/wiki/Home.md)** | full reference: concepts, CLI, TUI, container format, collectors, network forensics, schemas, workflows, threat model, secure erasure, file recovery, development, troubleshooting, FAQ |
+| [Installer threat model](THREAT_MODEL.md) | what the installer downloads, verifies and writes, and the one network request the binary makes |
 | [Usage guide](arachnid-usage-guide.md) | task-oriented walkthrough for operators, with real output |
 | [SOC allowlisting](docs/SOC-ALLOWLISTING.md) | full behavioural disclosure for detection engineering |
 | `--help` | every flag, always current |
@@ -109,6 +116,52 @@ Explicitly out of scope, and flagged rather than implemented if a future feature
 would need them: anti-EDR/anti-AV/anti-debugging, packing or runtime
 obfuscation, exploit or privilege-escalation code, process injection, dynamic
 code loading, self-persistence, packet injection or interception.
+
+---
+
+## Install
+
+```bash
+# macOS, Linux — read it first, then run it
+curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+less install.sh && sh install.sh
+```
+
+```powershell
+# Windows
+irm https://install.arachnid-forensic.dev/install.ps1 -OutFile install.ps1
+notepad install.ps1; .\install.ps1
+```
+
+The one-liners (`… | sh`, `… | iex`) do the same thing without the reading step,
+and are documented second on purpose. A project that asks you to allowlist a
+forensic binary should not also ask you to pipe an unread script into a shell.
+Both scripts are [checked into this repository](install.sh), so the signing key
+they pin is reviewable in version control rather than only at the URL.
+
+The installer verifies a **signature over the digest file, then the digest of
+the binary**, and aborts on either failure having installed nothing. It never
+elevates privileges on its own, never installs Npcap for you, and sends no
+telemetry. `arachnid-cli self uninstall` reverses it, including the one PATH
+line it marked.
+
+> **No release key has been generated for this project yet**, so the installers
+> stop and say so rather than installing something they cannot verify. Build
+> from source in the meantime — see below. The one-time setup is in
+> [release/README.md](release/README.md).
+
+Then check it over:
+
+```bash
+arachnid-cli doctor
+```
+
+Every failing check carries the fix for *your* machine: the package manager you
+actually have, the stale binary that is actually shadowing this one.
+
+Full detail, including package managers and the air-gapped path:
+[usage guide § Install](arachnid-usage-guide.md#install). What it does on the
+network, byte for byte: [THREAT_MODEL.md](THREAT_MODEL.md).
 
 ---
 
@@ -166,6 +219,20 @@ confirms the binary it allowlisted matches the source it reviewed.
 ---
 
 ## Usage
+
+Every command below is shown as the standalone binary, which is what scripts
+tend to name. `arachnid-cli` runs the same code through module groups:
+
+```bash
+arachnid-cli core     collect | capture | parse-pcap | verify | report
+arachnid-cli recover  scan | carve | list-results | export
+arachnid-cli sanitize list-devices | wipe | verify-wipe | cert
+arachnid-cli tui | doctor | version | self update | self uninstall
+```
+
+The five `core` commands also work without the prefix — `arachnid-cli collect
+-o ./ev` — which is the form older scripts use, and which keeps working. It
+dispatches in-process, so `--help` and the exit codes are the module's own.
 
 ### `collect` — volatile system state
 
@@ -699,6 +766,11 @@ out of scope rather than partially supported.
 
 ## Threat model
 
+This section covers the tools once installed. **How they get installed**, and
+the one network request `arachnid-cli` makes on its own account, are in
+[THREAT_MODEL.md](THREAT_MODEL.md) — that is the page to read before
+allowlisting the installer in a managed environment.
+
 ### What Arachnid Core defends against
 
 **Post-collection tampering.** Anyone who modifies an artifact, edits a custody
@@ -884,9 +956,29 @@ phone home fails the build rather than shipping.
 - **APFS recovers no files.** The container and its volumes are identified and
   reported; per-file recovery is out of v1 scope and the scan says so
   explicitly. Carving works on an APFS container and is the supported route.
-- **The release script ships `arachnid-core` only.** `arachnid-sanitize`,
-  `arachnid-recover` and `arachnid-cli` build in CI on Linux and Windows but
-  are not yet part of the signed release artifact set.
+- **No release signing key exists yet.** Both installers and `self update`
+  fail closed until one is generated and pinned, so today the working install
+  path is building from source. The one-time setup is in
+  [release/README.md](release/README.md).
+- **The release workflow has never run.** It builds all six targets on paper
+  and is the first thing a tag will exercise; the aarch64-linux libpcap
+  cross-build is the most likely first failure.
+- **`arachnid-cli` has no reproducible build.** `scripts/build-release.sh`
+  produces byte-identical `arachnid-core` binaries; the new workflow does not
+  yet do the same for `arachnid-cli`. You can verify the signature and the
+  digest, but you cannot independently rebuild and compare.
+- **Homebrew, Scoop and Winget packages are not published.** They are named in
+  the docs as planned, without commands, rather than shipped as instructions
+  that do not work.
+- **`arachnid-cli` makes one outbound request**, a daily version check on
+  interactive terminals only, disabled by `--no-update-check` or
+  `ARACHNID_NO_UPDATE_CHECK=1`. The standalone binaries make none. Specified in
+  [THREAT_MODEL.md](THREAT_MODEL.md) and
+  [SOC allowlisting §5a](docs/SOC-ALLOWLISTING.md).
+- **The release script ships `arachnid-core` only.** `arachnid-sanitize` and
+  `arachnid-recover` build in CI on Linux and Windows but are not yet part of
+  the signed release artifact set; the new release workflow publishes
+  `arachnid-cli`, which covers their functionality.
 
 ---
 

@@ -12,8 +12,11 @@
 
 ## Contents
 
+- [Install](#install)
 - [Requirements](#requirements)
 - [Development build](#development-build)
+- [Checking the installation](#checking-the-installation)
+- [Updates](#updates)
 - [Release build](#release-build)
 - [What "statically linked" covers](#what-statically-linked-covers-precisely)
 - [Reproducible builds](#reproducible-builds)
@@ -21,6 +24,42 @@
 - [Your first container](#your-first-container-five-minutes)
 - [Running the TUI](#running-the-tui)
 - [Where to go next](#where-to-go-next)
+
+---
+
+## Install
+
+```bash
+# macOS, Linux — read it first, then run it
+curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+less install.sh
+sh install.sh
+```
+
+```powershell
+# Windows
+irm https://install.arachnid-forensic.dev/install.ps1 -OutFile install.ps1
+notepad install.ps1
+.\install.ps1
+```
+
+The one-line piped forms (`… | sh`, `… | iex`) are the same thing without the
+reading step. They are documented second on purpose: a project that asks you to
+allowlist a forensic binary should not also ask you to pipe an unread script
+into a shell. Both scripts are checked into the repository, so the signing key
+they pin is reviewable in version control rather than only at the URL.
+
+The installer verifies a signature over the digest file, then the digest of the
+binary, and aborts on either failure having installed nothing. It installs to a
+per-user directory, never elevates on its own, and never installs Npcap for you.
+
+> **No release signing key has been generated for this project yet.** Both
+> installers stop and say so rather than installing something they cannot
+> verify, which is the intended behaviour rather than a bug. Until a key exists,
+> build from source as below. The one-time setup is in `release/README.md`.
+
+Full detail on what it downloads, verifies, writes and reverts:
+[THREAT_MODEL.md](../../THREAT_MODEL.md).
 
 ---
 
@@ -77,14 +116,21 @@ arachnid-cli --version
 ```
 
 That is the only one you need. **`arachnid-cli` is the single entry point** —
-bare it opens the terminal UI, and it takes every command below directly:
+bare it opens the terminal UI, and it takes every command below through a
+module group:
 
 ```bash
-arachnid-cli                          # the TUI, covering every module
-arachnid-cli collect -o ./ev-host01   # or any command, straight through
-arachnid-cli sanitize list-devices
+arachnid-cli                                 # the TUI, covering every module
+arachnid-cli core collect -o ./ev-host01     # triage
+arachnid-cli recover scan -i disk.img -o ./rec
+arachnid-cli sanitize list-devices           # DESTROYS DATA
+arachnid-cli doctor                          # why isn't it working?
 arachnid-cli --help
 ```
+
+The five `core` commands also work without the prefix — `arachnid-cli collect
+-o ./ev` — which is the form older scripts and docs use, and which keeps
+working.
 
 > Note the binary names are not the crate names. `arachnid-core-cli` is a
 > *crate*; typing it gets you `command not found`.
@@ -208,6 +254,56 @@ Windows:
 Get-FileHash -Algorithm SHA256 arachnid-core.exe
 signtool verify /pa /v arachnid-core.exe
 ```
+
+---
+
+## Checking the installation
+
+```bash
+arachnid-cli doctor
+```
+
+It reports the version and build hash, whether the binary on PATH is *this*
+binary, whether the capture library loaded, and what the process is actually
+permitted to do — read from its own credentials rather than by opening a raw
+socket, because on a monitored host a diagnostic that opens a raw socket is a
+diagnostic that trips an EDR rule.
+
+Every failing line carries the fix for **this** machine: the package manager you
+actually have, the stale copy that is actually shadowing the binary.
+
+```
+  [!!] PATH                   `arachnid-cli` resolves to /usr/local/bin/arachnid-cli,
+                              not to /home/analyst/.local/bin/arachnid-cli
+       An older copy is earlier in PATH. Remove it, or put
+       /home/analyst/.local/bin first.
+```
+
+`--json` gives the same report machine-readably. The exit code is 1 if anything
+failed, so a provisioning script can gate on it.
+
+---
+
+## Updates
+
+`arachnid-cli` checks once a day, **on an interactive terminal only**, whether a
+newer release exists, and prints one line to stderr if so. Scripted and
+scheduled runs make no network call at all.
+
+It never installs anything by itself. Silently replacing a forensic tool's
+binary would break the "the same binary processed this evidence" claim that
+chain-of-custody rests on.
+
+```bash
+arachnid-cli self update --dry-run    # download, verify, install nothing
+arachnid-cli self update              # download, verify, install
+arachnid-cli self uninstall           # shows what it would do; --yes does it
+```
+
+Switch the check off with `--no-update-check`, or permanently with
+`ARACHNID_NO_UPDATE_CHECK=1`. Both are honoured silently. The full behaviour,
+including exactly what is sent, is in [THREAT_MODEL.md](../../THREAT_MODEL.md)
+and [SOC allowlisting §5a](../SOC-ALLOWLISTING.md).
 
 ---
 

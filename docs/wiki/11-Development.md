@@ -45,7 +45,7 @@ something without breaking the properties the tool depends on.
 | `arachnid-sanitize-cli` | `arachnid-sanitize` | argument parsing and orchestration for erasure |
 | `arachnid-recover-core` | — | read-only NTFS/ext4/APFS parsing, signature carving, confidence scoring, export |
 | `arachnid-recover-cli` | `arachnid-recover` | argument parsing and orchestration for recovery |
-| `arachnid-cli` | `arachnid-cli` | the single entry point: the TUI bare, or dispatch into any of the three CLIs without re-exec |
+| `arachnid-cli` | `arachnid-cli` | the single entry point: the TUI bare, or dispatch into any of the three CLIs without re-exec. Also owns `doctor`, `self update` and the version check |
 
 **The front ends contain no engine logic.** The TUI in particular is a
 view/controller layer: it never shells out to a CLI, and it can do nothing the
@@ -140,6 +140,7 @@ External dependencies are deliberately few:
 | `clap` | cli | argument parsing |
 | `ctrlc` | cli | clean capture interruption |
 | `ratatui` | tui | terminal rendering |
+| `ureq`, `base64` | cli | the update check and `self update`. The only network client in the suite; see THREAT_MODEL.md |
 | `windows` | sanitize-core, recover-core (Windows) | raw device I/O and storage ioctls |
 | `tempfile` | sanitize-core, recover-core (dev) | file-backed virtual devices and export targets in tests |
 
@@ -299,7 +300,7 @@ rather than working around the check.
 
 ## CI
 
-Six jobs, on every push to `main` and every PR:
+Seven jobs, on every push to `main` and every PR:
 
 | Job | Runs |
 |---|---|
@@ -308,7 +309,14 @@ Six jobs, on every push to `main` and every PR:
 | **fmt** | `cargo fmt --all --check` |
 | **supply-chain** | `cargo-deny` + `rustsec/audit-check` |
 | **schema** | produces a **real container** and validates it against the published schemas |
+| **installer scripts** | `dash -n` and `shellcheck` on `install.sh`, and a PowerShell parse of `install.ps1` |
 | **publish wiki** | pushes `docs/wiki/` to the GitHub wiki. Push to `main` only |
+
+A separate **Release** workflow (`.github/workflows/release.yml`) runs on a
+`v*` tag: it builds `arachnid-cli` for six targets, writes one `SHA256SUMS` for
+the set, signs it once with minisign, and attaches everything to the release.
+See `release/README.md` for the key setup it needs, and note that it has not
+run yet — no release has been tagged.
 
 Three details worth knowing:
 
@@ -322,6 +330,12 @@ are denied through clippy's own `-- -D warnings`, which is appended instead.
 provides the import library, which is all the link step needs. Leaving the
 runtime out makes CI a standing check that the **no-Npcap path works** — which
 is how most analyst workstations are configured.
+
+**The installers are linted as source, because they are.** `install.sh` claims
+in its header to be POSIX sh rather than bash, and dash is what makes that claim
+true or false — on Debian and Ubuntu dash *is* `/bin/sh`, so a bashism there is
+a broken install for most Linux users. The job runs `dash -n`, `bash -n` and
+`shellcheck --shell=sh`, and parses `install.ps1` with the PowerShell parser.
 
 **Documentation publishes two different ways, and only one is automatic by
 itself.** The Pages site at `arachnidgs.github.io/forensic` is built by GitHub

@@ -26,6 +26,7 @@ TUI), and Arachnid Sanitize (`arachnid-sanitize`, plus screen 7).
 
 - [Install](#install)
 - [The 60-second version](#the-60-second-version)
+- [`doctor` — check the installation](#check-the-installation)
 - [`collect` — volatile system state](#collect--volatile-system-state)
 - [`capture` — live packet capture](#capture--live-packet-capture)
 - [`parse-pcap` — offline analysis](#parse-pcap--offline-analysis)
@@ -43,11 +44,131 @@ TUI), and Arachnid Sanitize (`arachnid-sanitize`, plus screen 7).
 
 ## Install
 
-### Build from source
+### The short version
 
 ```bash
-git clone https://github.com/arachnid-forensic/arachnid-core.git
-cd arachnid-core
+# Read it first, then run it — the recommended path
+curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+less install.sh
+sh install.sh
+```
+
+Then `arachnid-cli doctor`.
+
+### Why the installer asks you to read it
+
+This suite asks SOCs to allowlist a binary that does forensic things to a host.
+A project making that request should not also ask you to pipe an unread script
+into a shell. So the inspect-then-run path is the documented one, and the
+one-liner below is offered as what it is: the same thing, minus the inspection.
+
+The script is [checked into this repository](install.sh), so the key it pins is
+reviewable in version control history and not just at whatever the CDN served
+you. Diff the two if you like.
+
+### 1. Inspect, then run (recommended)
+
+**macOS and Linux**
+
+```bash
+curl -fsSL https://install.arachnid-forensic.dev/install.sh -o install.sh
+less install.sh
+sh install.sh
+```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://install.arachnid-forensic.dev/install.ps1 -OutFile install.ps1
+notepad install.ps1
+.\install.ps1
+```
+
+### 2. One line (the same thing, without the reading)
+
+```bash
+curl -fsSL https://install.arachnid-forensic.dev/install.sh | sh          # macOS, Linux
+```
+
+```powershell
+irm https://install.arachnid-forensic.dev/install.ps1 | iex               # Windows
+```
+
+Identical behaviour, with one exception: a piped install has no terminal to
+answer a question from, so it will not offer to run `setcap` for you. It prints
+the command instead.
+
+### 3. From source
+
+For anyone who would rather build it than download it:
+
+```bash
+git clone https://github.com/ArachnidGs/forensic.git
+cd forensic
+cargo install --path crates/arachnid-cli
+```
+
+### 4. Direct download
+
+For air-gapped or policy-restricted environments where none of the above are
+permitted. Every release publishes the binaries, a `SHA256SUMS`, and a detached
+`SHA256SUMS.minisig`:
+
+```bash
+minisign -Vm SHA256SUMS -P "$(tail -n1 release/minisign.pub)"
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+Both must pass before you run anything. The first says the digests are ours; the
+second says the binary matches them.
+
+### Package managers
+
+Not yet published. A Homebrew tap and Scoop/Winget manifests are planned so
+users can keep their existing trust chain, and this section will name the exact
+commands when they exist rather than before.
+
+### What the installer does
+
+In order:
+
+1. works out your OS, architecture and libc (musl and glibc are different
+   downloads, and the failure when you get it wrong is a "not found" on a file
+   that is plainly there)
+2. downloads the binary, `SHA256SUMS`, and the signature over `SHA256SUMS`
+3. **verifies the signature, then the digest.** Either failure aborts, having
+   installed nothing. There is no `--force` and no `--skip-verify`
+4. installs to `~/.local/bin` (Linux), `/usr/local/bin` if it is already
+   writable (macOS), or `%LOCALAPPDATA%\arachnid-forensic\bin` (Windows)
+5. adds that directory to PATH **only if it is missing**, and prints the exact
+   line it added and the file it added it to
+6. checks for libpcap or Npcap and tells you the install command for *your*
+   package manager if it is missing
+7. offers `setcap` for live capture — by name, and only if you say yes
+
+It never elevates privileges on its own, never installs Npcap for you, and
+sends no telemetry of any kind. Run it again any time: it compares versions and
+stops before downloading anything if you are already current.
+
+> **No release key has been generated for this project yet**, so the installers
+> currently stop and say so rather than installing something they cannot verify.
+> Build from source in the meantime. See [release/README.md](release/README.md).
+
+### Uninstall
+
+```bash
+arachnid-cli self uninstall          # shows what it would do
+arachnid-cli self uninstall --yes    # does it
+```
+
+It removes the binary and the one PATH line the installer marked. It matches on
+that marker, not on the path, so if you had already added the same directory
+yourself, your line stays. Evidence containers, certificates and recovery
+output are never touched.
+
+### The binaries
+
+```bash
 cargo build --release
 ```
 
@@ -61,26 +182,26 @@ Five binaries land in `target/release/`:
 | `arachnid-sanitize` | **destructive.** Secure erasure on its own — see [Arachnid Sanitize](#arachnid-sanitize) |
 | `arachnid-tui` | the terminal UI on its own |
 
-`cargo build` leaves these in `target/release/`; it does **not** install them.
-Put the entry point on your PATH with:
+The installer ships `arachnid-cli` only, which covers all of it:
 
-```bash
-cargo install --path crates/arachnid-cli
+```
+arachnid-cli core collect -o ./ev-host01      arachnid-cli recover scan  -i disk.img -o ./rec
+arachnid-cli core verify  ./ev-host01         arachnid-cli sanitize list-devices
+arachnid-cli tui                              arachnid-cli doctor
 ```
 
-Then `arachnid-cli` is the only name you need — every command in this guide also
-works as `arachnid-cli <command>`. The standalone binaries stay for scripts that
-name them.
+The five `core` commands also work without the `core` prefix — `arachnid-cli
+collect -o ./ev` — which is the form older scripts use, and which keeps working.
 
 > The binary names are not the crate names. `arachnid-core-cli` is a *crate*;
 > typing it gets you `command not found`.
 
-Requirements:
+Requirements for building from source:
 
 | | Linux | Windows |
 |---|---|---|
 | Toolchain | Rust stable ≥ 1.82 | Rust stable ≥ 1.82, MSVC |
-| Toolchain (TUI, Recover, Sanitize) | Rust stable ≥ 1.88 | Rust stable ≥ 1.88, MSVC |
+| Toolchain (TUI, Recover, Sanitize, CLI) | Rust stable ≥ 1.88 | Rust stable ≥ 1.88, MSVC |
 | For `capture` / `parse-pcap` | `libpcap-dev` / `libpcap-devel` | [Npcap](https://npcap.com/) + the Npcap SDK |
 | Capture privilege | root, or `CAP_NET_RAW` | Npcap driver access |
 
@@ -90,7 +211,70 @@ so), and on Windows they run with no Npcap installed at all — `wpcap.dll` is
 delay-loaded. Recovering from an attached *device* needs root on Linux or
 Administrator on Windows, for the read-only handle.
 
+### Check the installation
+
+```bash
+arachnid-cli doctor
+```
+
+```
+arachnid-cli 0.1.0 — installation check
+
+  [ok] version                0.1.0 (unknown (local build))
+  [ok] platform               arachnid-cli-x86_64-unknown-linux-gnu
+  [ok] PATH                   resolves to /home/analyst/.local/bin/arachnid-cli
+  [ok] capture                2 interface(s): eth0, lo
+  [ok] privilege              uid 1000 — unprivileged
+  [ok] capture privilege      not elevated and CAP_NET_RAW is not held; live capture will not open an interface
+       Grant the capability instead of running everything as root:
+         sudo setcap cap_net_raw,cap_net_admin=eip /home/analyst/.local/bin/arachnid-cli
+       Collection, parsing, verification, reporting and recovery from an image all work without this.
+  [ok] device access          not elevated; raw block devices cannot be opened
+  [ok] update check           enabled: one GitHub request per day, interactive terminals only, never installs
+
+All checks passed.
+```
+
+Every failing line carries the fix for *your* machine — the package manager you
+actually have, the path that is actually shadowing the binary. `--json` gives
+the same report machine-readably.
+
+### Updates
+
+`arachnid-cli` checks once a day, on an interactive terminal only, whether a
+newer release exists, and prints one line to stderr if so. It never installs
+anything by itself: replacing a forensic tool's binary behind your back would
+break the "the same binary processed this evidence" claim that chain-of-custody
+rests on.
+
+```bash
+arachnid-cli self update --dry-run    # verify and report, install nothing
+arachnid-cli self update              # verify and install
+```
+
+Turn the check off entirely with `--no-update-check`, or permanently:
+
+```bash
+export ARACHNID_NO_UPDATE_CHECK=1
+```
+
+Scripted runs never check at all — the check is skipped whenever stderr is not a
+terminal, so playbooks, cron jobs and CI make no network call. The full
+behaviour, including exactly what is sent, is in
+[THREAT_MODEL.md](THREAT_MODEL.md).
+
 ### Verify a release binary before you run it on evidence
+
+The installer and `self update` do this for you and refuse on failure. Do it by
+hand when you downloaded the binary yourself:
+
+```bash
+minisign -Vm SHA256SUMS -P "$(tail -n1 release/minisign.pub)"   # the digests are ours
+sha256sum -c SHA256SUMS --ignore-missing                        # the binary matches them
+```
+
+`arachnid-core`'s own musl release additionally ships a detached GPG signature,
+which the standalone release script produces:
 
 ```bash
 sha256sum -c arachnid-core-0.1.0-x86_64-unknown-linux-musl.sha256
@@ -104,6 +288,18 @@ On Windows the release is Authenticode-signed; check it with
 ---
 
 ## The 60-second version
+
+One command covers every module:
+
+```bash
+arachnid-cli core collect     -o ./ev-host01 --operator "analyst-7"
+arachnid-cli recover scan     -i ./ev-host01/artifacts/disk.img -o ./rec --carve-pass
+arachnid-cli sanitize list-devices
+arachnid-cli tui
+arachnid-cli doctor
+```
+
+The standalone binaries do the same thing, and are what scripts tend to name:
 
 ```bash
 arachnid-core collect    -o ./ev-host01 --operator "analyst-7"    # volatile state
