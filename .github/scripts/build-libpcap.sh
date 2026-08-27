@@ -40,10 +40,20 @@ fi
 tar xf "libpcap-$VERSION.tar.gz"
 cd "libpcap-$VERSION"
 
+# --with-pcap=linux is not optional here. libpcap autodetects its capture
+# back-end by compiling probes, and under musl-gcc (and when cross-compiling)
+# that detection comes up empty and configure stops with "No supported packet
+# capture interface was found" — even though Linux packet sockets are exactly
+# what it will end up using. Naming the back-end skips the guess.
+#
+# This script only ever builds for Linux targets: macOS uses the system libpcap
+# and Windows uses the Npcap SDK.
+#
 # The optional back-ends are all disabled: they pull in D-Bus, libnl, libusb and
 # RDMA, none of which a forensic capture needs and every one of which is another
 # shared object a "static" binary would end up needing at runtime.
 set -- --prefix="$PREFIX" \
+       --with-pcap=linux \
        --enable-shared=no \
        --without-libnl \
        --disable-dbus \
