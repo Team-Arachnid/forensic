@@ -130,6 +130,49 @@ fn client_hello(host: &str) -> Vec<u8> {
     rec
 }
 
+/// Whether the capture library is loadable on this host.
+///
+/// Every test below parses a PCAP, and parsing goes through libpcap — Npcap's
+/// `wpcap.dll` on Windows. Windows CI installs the Npcap **SDK**, which is the
+/// import library the link step needs, and deliberately not the runtime, so
+/// that the no-Npcap path stays under test. That is a supported state of this
+/// tool, not a broken build, so these skip rather than fail when the library is
+/// absent — the alternative is a permanently red Windows leg that everyone
+/// learns to ignore.
+///
+/// Probed by parsing the smallest legal PCAP: a bare header and no packets. If
+/// that works, the library is there.
+fn pcap_available() -> bool {
+    // Probed once for the whole test binary. Tests run in parallel, and naming
+    // the probe file after the process id gave all of them one shared path — so
+    // they raced, some saw it deleted mid-parse, and concluded the library was
+    // missing. A skipped test still reports "ok", which is exactly how that hid.
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        let probe =
+            std::env::temp_dir().join(format!("arachnid-pcap-probe-{}.pcap", std::process::id()));
+        if std::fs::write(&probe, PcapBuilder::new().bytes).is_err() {
+            return false;
+        }
+        let ok = parse_pcap(&probe, &ParseOptions::default()).is_ok();
+        let _ = std::fs::remove_file(&probe);
+        ok
+    })
+}
+
+/// Skip the calling test, loudly, when there is no capture library to parse with.
+macro_rules! require_pcap {
+    () => {
+        if !pcap_available() {
+            eprintln!(
+                "SKIPPED: no capture library on this host (Npcap on Windows, libpcap on \
+                 Linux). The no-Npcap path is under test elsewhere."
+            );
+            return;
+        }
+    };
+}
+
 fn indicator<'a>(
     a: &'a arachnid_netcap::PcapAnalysis,
     kind: &str,
@@ -142,6 +185,7 @@ fn indicator<'a>(
 
 #[test]
 fn a_mixed_capture_yields_flows_and_indicators() {
+    require_pcap!();
     let mut b = PcapBuilder::new();
 
     b.udp(
@@ -212,6 +256,7 @@ fn a_mixed_capture_yields_flows_and_indicators() {
 
 #[test]
 fn a_bpf_filter_narrows_the_parse() {
+    require_pcap!();
     let mut b = PcapBuilder::new();
     b.udp(SRC, 51234, [1, 1, 1, 1], 53, &dns_query("example.com"));
     b.tcp(SRC, 40002, DST, 443, 5000, &client_hello("c2.example.net"));
@@ -239,6 +284,7 @@ fn a_bpf_filter_narrows_the_parse() {
 
 #[test]
 fn the_reassembly_ceiling_is_reported_not_silent() {
+    require_pcap!();
     let mut b = PcapBuilder::new();
     let chunk = vec![b'A'; 1000];
     for i in 0..4u32 {
@@ -267,6 +313,7 @@ fn the_reassembly_ceiling_is_reported_not_silent() {
 
 #[test]
 fn an_empty_capture_is_not_an_error() {
+    require_pcap!();
     let path = PcapBuilder::new().write("empty");
     let a = parse_pcap(&path, &ParseOptions::default()).unwrap();
     assert_eq!(a.packets, 0);
