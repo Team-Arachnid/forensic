@@ -459,25 +459,35 @@ fn install_over(exe: &Path, bytes: &[u8]) -> Result<()> {
         std::fs::set_permissions(&staged, perms)?;
     }
 
-    #[cfg(windows)]
-    {
-        let old = dir.join(".arachnid-cli.old");
-        let _ = std::fs::remove_file(&old);
-        std::fs::rename(exe, &old)
-            .context("move the running binary aside; is another arachnid-cli running?")?;
-        if let Err(e) = std::fs::rename(&staged, exe) {
-            // Put it back rather than leaving the operator with no binary.
-            let _ = std::fs::rename(&old, exe);
-            return Err(e).context("install the new binary");
-        }
-        return Ok(());
-    }
+    swap_into_place(&staged, exe)
+}
 
-    #[cfg(not(windows))]
-    {
-        std::fs::rename(&staged, exe).context("install the new binary")?;
-        Ok(())
+/// Windows will not let a running image be replaced, so the old file is moved
+/// aside first and left for the next run to clear. If the swap then fails, the
+/// old binary goes back — an operator is left with a working tool or an error,
+/// never with neither.
+#[cfg(windows)]
+fn swap_into_place(staged: &Path, exe: &Path) -> Result<()> {
+    let dir = exe
+        .parent()
+        .context("the running binary has no parent directory")?;
+    let old = dir.join(".arachnid-cli.old");
+    let _ = std::fs::remove_file(&old);
+    std::fs::rename(exe, &old)
+        .context("move the running binary aside; is another arachnid-cli running?")?;
+    match std::fs::rename(staged, exe) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::rename(&old, exe);
+            Err(e).context("install the new binary")
+        }
     }
+}
+
+/// Everywhere else a rename over a running binary is legal and atomic.
+#[cfg(not(windows))]
+fn swap_into_place(staged: &Path, exe: &Path) -> Result<()> {
+    std::fs::rename(staged, exe).context("install the new binary")
 }
 
 #[cfg(test)]

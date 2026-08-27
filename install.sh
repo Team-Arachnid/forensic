@@ -7,8 +7,10 @@
 # unread script into a shell.
 #
 #   curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
-#   less install.sh
 #   sh install.sh
+#
+# Reading it first is encouraged but is your call, not a step you have to get
+# past: `less install.sh` before that second line, or open it in an editor.
 #
 # What it does, in order:
 #   1. works out this machine's OS, architecture and libc
@@ -114,18 +116,53 @@ fetch() {
     fi
 }
 
-fetch_stdout() {
+# Fetch to a file and report the HTTP status, so "no release exists" and "the
+# network is down" stop looking like the same failure. Deliberately without
+# curl's -f: a 404 body is what tells us which of the two it was.
+fetch_status() {
     if have curl; then
-        curl -fsSL --proto '=https' --tlsv1.2 "$1"
+        curl -sSL --proto '=https' --tlsv1.2 -o "$2" -w '%{http_code}' "$1" 2>/dev/null \
+            || printf '000'
+    elif wget -qO "$2" "$1"; then
+        printf '200'
     else
-        wget -qO- "$1"
+        # wget does not hand back a status without parsing its stderr, so an
+        # error here is reported as "unknown" rather than guessed at.
+        printf '???'
     fi
 }
 
-latest_tag() {
-    fetch_stdout "https://api.github.com/repos/$REPO/releases/latest" \
-        | sed -n 's/.*"tag_name" *: *"\([^"]*\)".*/\1/p' \
-        | head -n1
+# Resolve the release to install into $TAG.
+#
+# Not a command substitution: `die` inside one exits the subshell, and the
+# specific diagnosis would be swallowed on the way out.
+resolve_tag() {
+    if [ -n "${ARACHNID_VERSION:-}" ]; then
+        TAG="$ARACHNID_VERSION"
+        return
+    fi
+
+    status="$(fetch_status "https://api.github.com/repos/$REPO/releases/latest" "$TMP/latest.json")"
+    case "$status" in
+        200) ;;
+        404) die "this repository has no published releases yet, so there is nothing to install.
+
+Build it from source in the meantime:
+  git clone https://github.com/$REPO.git
+  cd forensic && cargo install --path crates/arachnid-cli
+
+Or watch https://github.com/$REPO/releases for the first one." ;;
+        403 | 429) die "GitHub rate-limited this request (HTTP $status). Wait a few minutes, or
+install a specific version:  ARACHNID_VERSION=v0.1.0 sh install.sh" ;;
+        000) die "could not reach api.github.com. Check network access and any proxy, or
+install a specific version:  ARACHNID_VERSION=v0.1.0 sh install.sh" ;;
+        *) die "could not read the release list (HTTP $status). Install a specific version
+instead:  ARACHNID_VERSION=v0.1.0 sh install.sh" ;;
+    esac
+
+    TAG="$(sed -n 's/.*"tag_name" *: *"\([^"]*\)".*/\1/p' "$TMP/latest.json" | head -n1)"
+    [ -n "$TAG" ] || die "the releases API answered, but with no tag_name. Install a specific
+version instead:  ARACHNID_VERSION=v0.1.0 sh install.sh"
 }
 
 # --------------------------------------------------------------------------
@@ -349,9 +386,7 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 step "Arachnid Forensic installer"
 say  "    target:    $TARGET"
 
-TAG="${ARACHNID_VERSION:-$(latest_tag)}"
-[ -n "$TAG" ] || die "could not determine the latest release. Check network access to github.com,
-or pass an explicit version:  ARACHNID_VERSION=v0.1.0 sh install.sh"
+resolve_tag
 VERSION="${TAG#v}"
 say  "    release:   $TAG"
 

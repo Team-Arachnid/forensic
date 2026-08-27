@@ -30,18 +30,19 @@
 ## Install
 
 ```bash
-# macOS, Linux — read it first, then run it
+# macOS, Linux
 curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
-less install.sh
 sh install.sh
 ```
 
 ```powershell
 # Windows
 irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
-notepad install.ps1
 .\install.ps1
 ```
+
+The script lands on disk before anything runs, so `less install.sh` in between is
+available if you want it — an option the piped form does not give you.
 
 The one-line piped forms (`… | sh`, `… | iex`) are the same thing without the
 reading step. They are documented second on purpose: a project that asks you to

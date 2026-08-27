@@ -26,9 +26,8 @@ arachnid-tui                                          # the same engine, driven 
 One command covers all of it, and one line installs it:
 
 ```bash
-# Read it first, then run it. See Install for why that is the documented path.
 curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
-less install.sh && sh install.sh
+sh install.sh
 ```
 
 ```bash
@@ -122,16 +121,20 @@ code loading, self-persistence, packet injection or interception.
 ## Install
 
 ```bash
-# macOS, Linux — read it first, then run it
+# macOS, Linux
 curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
-less install.sh && sh install.sh
+sh install.sh
 ```
 
 ```powershell
 # Windows
 irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
-notepad install.ps1; .\install.ps1
+.\install.ps1
 ```
+
+It downloads to a file rather than piping into a shell, so you *can* read it
+before running it — `less install.sh` between those two lines. That is
+encouraged, not a step you have to get past.
 
 The one-liners (`… | sh`, `… | iex`) do the same thing without the reading step,
 and are documented second on purpose. A project that asks you to allowlist a
