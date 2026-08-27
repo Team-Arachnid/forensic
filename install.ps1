@@ -9,8 +9,10 @@
     unread script into a shell.
 
         irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
-        notepad install.ps1
         .\install.ps1
+
+    Reading it first is encouraged but is your call, not a step you have to get
+    past: `notepad install.ps1` before that second line.
 
     What it does, in order:
       1. works out this machine's architecture
@@ -217,10 +219,36 @@ if (-not $Version) {
                                      -UserAgent "arachnid-cli-installer" -TimeoutSec 30
         $Version = $release.tag_name
     } catch {
-        Fail @"
-could not determine the latest release. Check network access to github.com, or
-pass an explicit version:  .\install.ps1 -Version v0.1.0
+        # A 404 here means "no releases published", which is a different problem
+        # from "the network is down" and deserves a different answer.
+        $status = $null
+        if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
+        switch ($status) {
+            404 {
+                Fail @"
+this repository has no published releases yet, so there is nothing to install.
+
+Build it from source in the meantime:
+  git clone https://github.com/$Repo.git
+  cd forensic; cargo install --path crates/arachnid-cli
+
+Or watch https://github.com/$Repo/releases for the first one.
 "@
+            }
+            { $_ -in 403, 429 } {
+                Fail @"
+GitHub rate-limited this request (HTTP $status). Wait a few minutes, or install
+a specific version:  .\install.ps1 -Version v0.1.0
+"@
+            }
+            default {
+                Fail @"
+could not read the release list$(if ($status) { " (HTTP $status)" }). Check network
+access to github.com and any proxy, or install a specific version:
+  .\install.ps1 -Version v0.1.0
+"@
+            }
+        }
     }
 }
 $plain = $Version.TrimStart('v')

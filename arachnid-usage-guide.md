@@ -47,20 +47,23 @@ TUI), and Arachnid Sanitize (`arachnid-sanitize`, plus screen 7).
 ### The short version
 
 ```bash
-# Read it first, then run it — the recommended path
 curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
-less install.sh
 sh install.sh
 ```
 
 Then `arachnid-cli doctor`.
 
+It downloads to a file rather than piping into a shell, so reading it first is a
+thing you *can* do — `less install.sh` between those two lines — rather than a
+step you have to get past.
+
 ### Why the installer asks you to read it
 
 This suite asks SOCs to allowlist a binary that does forensic things to a host.
 A project making that request should not also ask you to pipe an unread script
-into a shell. So the inspect-then-run path is the documented one, and the
-one-liner below is offered as what it is: the same thing, minus the inspection.
+into a shell. So the download-then-run path is the documented one, and the
+one-liner below is offered as what it is: the same thing, with no opportunity to
+look at what you are about to run.
 
 There is no separate download host to trust: the URL serves `install.sh`
 straight out of this repository's `main` branch. The script you run and the
@@ -74,13 +77,12 @@ Swap `main` for a tag to pin a fixed version:
 curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/v0.1.0/install.sh -o install.sh
 ```
 
-### 1. Inspect, then run (recommended)
+### 1. Download, then run (recommended)
 
 **macOS and Linux**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
-less install.sh
 sh install.sh
 ```
 
@@ -88,11 +90,15 @@ sh install.sh
 
 ```powershell
 irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
-notepad install.ps1
 .\install.ps1
 ```
 
-### 2. One line (the same thing, without the reading)
+The script lands on disk before anything runs, so you can read it in between —
+`less install.sh`, or open it in an editor. Whether you do is your call; the
+point is that the option exists, which it does not when the script goes straight
+down a pipe.
+
+### 2. One line (straight into the shell, nothing to read)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh | sh          # macOS, Linux

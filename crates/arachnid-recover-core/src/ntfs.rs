@@ -381,9 +381,15 @@ fn parse_file_name(v: &[u8]) -> Option<FileName> {
     let chars = *v.get(0x40)? as usize;
     let namespace = *v.get(0x41)?;
     let raw = v.get(0x42..0x42 + chars * 2)?;
+    // `as_chunks` over `chunks_exact`: the pair arrives as a [u8; 2] the
+    // compiler already knows the length of, so there is no indexing to get
+    // wrong and no remainder branch to forget.
     let units: Vec<u16> = raw
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .copied()
+        .map(u16::from_le_bytes)
         .collect();
     Some(FileName {
         parent,

@@ -65,16 +65,19 @@ decision and a separate habit — `--dry-run` first, every time.
 ## Install
 
 ```bash
-# macOS, Linux — read it first, then run it
+# macOS, Linux
 curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
-less install.sh && sh install.sh
+sh install.sh
 ```
 
 ```powershell
 # Windows
 irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
-notepad install.ps1; .\install.ps1
+.\install.ps1
 ```
+
+It downloads to a file rather than piping into a shell, so you can read it first
+(`less install.sh`) if you want to.
 
 The installer verifies a signature over the digest file, then the digest of the
 binary, and aborts on either failure having installed nothing. Then run
