@@ -75,4 +75,4 @@ git -c user.name="${GIT_AUTHOR_NAME:-$(git config user.name)}" \
     -c user.email="${GIT_AUTHOR_EMAIL:-$(git config user.email)}" \
     commit --quiet -m "docs: sync wiki from docs/wiki@$(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo local)"
 git push --quiet origin HEAD
-echo "published $(ls -1 ./*.md | wc -l) pages to https://github.com/$REPO/wiki"
+echo "published $(find . -maxdepth 1 -name '*.md' | wc -l) pages to https://github.com/$REPO/wiki"

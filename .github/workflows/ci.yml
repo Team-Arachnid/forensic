@@ -147,8 +147,11 @@ jobs:
           dash -n install.sh
           bash -n install.sh
           sh -n .github/scripts/build-libpcap.sh
+      # No --shell override: each script's shebang says what it is, and forcing
+      # sh onto publish-wiki.sh (which is bash, and uses pipefail) reported a
+      # bashism that was never a bug.
       - name: shellcheck
-        run: shellcheck --shell=sh install.sh .github/scripts/build-libpcap.sh scripts/publish-wiki.sh
+        run: shellcheck install.sh .github/scripts/build-libpcap.sh scripts/publish-wiki.sh
       - name: install.ps1 parses
         shell: pwsh
         run: |

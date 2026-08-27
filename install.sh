@@ -243,6 +243,10 @@ profile_for_shell() {
 }
 
 path_line_for_shell() {
+    # SC2016 is the intent, not a slip: this writes a line into the operator's
+    # profile that has to contain a literal $PATH, expanded by their shell at
+    # login rather than by this script now.
+    # shellcheck disable=SC2016
     case "$(basename "${SHELL:-/bin/sh}")" in
         fish) printf 'fish_add_path %s\n' "$1" ;;
         *)    printf 'export PATH="%s:$PATH"\n' "$1" ;;
@@ -268,7 +272,6 @@ setup_path() {
     PATH_NOTE="added to $profile:
       $line
     Open a new shell, or run:  . $profile"
-    PATH_CHANGED=1
 }
 
 # --------------------------------------------------------------------------
@@ -318,8 +321,11 @@ offer_setcap() {
     read -r reply
     case "$reply" in
         y | Y | yes | YES)
-            sudo setcap cap_net_raw,cap_net_admin=eip "$INSTALL_DIR/$BIN" \
-                && say "  granted." || warn "setcap failed; run it yourself when you need capture."
+            if sudo setcap cap_net_raw,cap_net_admin=eip "$INSTALL_DIR/$BIN"; then
+                say "  granted."
+            else
+                warn "setcap failed; run it yourself when you need capture."
+            fi
             ;;
         *) say "  skipped." ;;
     esac
@@ -384,7 +390,6 @@ chmod 0755 "$TMP/$ASSET"
 # half-written binary where a working one used to be.
 mv -f "$TMP/$ASSET" "$EXISTING"
 
-PATH_CHANGED=0
 PATH_NOTE=""
 setup_path
 check_libpcap
