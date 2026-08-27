@@ -53,11 +53,11 @@ $Marker = '# added by arachnid-cli installer'
 # Minisign public key for release artifacts. This is the trust anchor: the whole
 # verification chain reduces to whether this line is the project's real key.
 #
-# Empty until the project's release key is generated and pinned here — see
-# release/README.md. The installer fails closed while it is empty rather than
-# falling back to "checksum only", which would prove a download was not
-# corrupted and nothing at all about where it came from.
-$PubKey = $env:ARACHNID_PUBKEY
+# The installer fails closed if this is ever emptied, rather than falling back to
+# "checksum only" — a checksum fetched over the same channel as the artifact
+# proves the download was not corrupted and nothing at all about where it came
+# from. Rotating it is a release, not a patch; see release/README.md.
+$PubKey = if ($env:ARACHNID_PUBKEY) { $env:ARACHNID_PUBKEY } else { "RWSa05GQC5c3Dm/H9zcNXL8f/BzSD2ssDBVyDHXUaqeWcWaUasPk7cry" }
 
 function Write-Step { param([string]$m) Write-Host "==> $m" }
 function Write-Detail { param([string]$m) Write-Host "    $m" }

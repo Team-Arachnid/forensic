@@ -16,7 +16,13 @@ PREFIX="$2"
 HOST="${3:-}"
 VERSION="${PCAP_VERSION:-1.10.5}"
 
-[ -f "$PREFIX/lib/libpcap.a" ] && { echo "libpcap already built at $PREFIX"; exit 0; }
+# `if`, not `[ ... ] && { ...; }`: under `set -e` a top-level AND-OR list whose
+# first command fails takes the whole script down with it, which on a fresh
+# runner is every single time.
+if [ -f "$PREFIX/lib/libpcap.a" ]; then
+    echo "libpcap already built at $PREFIX"
+    exit 0
+fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
