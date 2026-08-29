@@ -72,7 +72,19 @@ jobs:
       - name: libpcap (musl, from source)
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: |
-          sudo apt-get update && sudo apt-get install -y musl-tools
+          sudo apt-get update && sudo apt-get install -y musl-tools linux-libc-dev
+          # musl-gcc compiles with -nostdinc and adds only musl's own headers, so
+          # the kernel headers libpcap needs are invisible to it —
+          # pcap-linux.c stops at `linux/if.h: No such file or directory`.
+          #
+          # Link the kernel headers into musl's include directory rather than
+          # putting /usr/include on the include path, which would drag glibc's
+          # headers in alongside musl's and produce a far more confusing failure.
+          for d in linux asm-generic; do
+            sudo ln -sfn "/usr/include/$d" "/usr/include/x86_64-linux-musl/$d"
+          done
+          sudo ln -sfn /usr/include/x86_64-linux-gnu/asm \
+                       /usr/include/x86_64-linux-musl/asm
           ./.github/scripts/build-libpcap.sh musl-gcc "$PWD/pcap-prefix"
           echo "LIBPCAP_LIBDIR=$PWD/pcap-prefix/lib" >> "$GITHUB_ENV"
           echo "LIBPCAP_VER=$PCAP_VERSION" >> "$GITHUB_ENV"
