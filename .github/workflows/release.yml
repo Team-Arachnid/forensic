@@ -213,20 +213,38 @@ jobs:
           # `gh secret set` keeps whatever reached its stdin, so a stray newline
           # or a copied trailing space becomes part of the password and minisign
           # answers "Wrong password for that key" with no hint as to why.
-          password="$(printf '%s' "$MINISIGN_PASSWORD" | tr -d '\r\n')"
+          password="$(printf '%s' "${MINISIGN_PASSWORD:-}" | tr -d '\r\n')"
 
-          # Legacy (non-prehashed) mode: a plain Ed25519 signature over the file,
-          # which `arachnid-cli self update` verifies with ed25519-dalek rather
-          # than carrying a second hash implementation. Do not add -H.
-          if ! printf '%s\n' "$password" \
-                | minisign -S -s minisign.key -m dist/SHA256SUMS \
-                    -t "arachnid-forensic ${{ github.event.inputs.tag || github.ref_name }}"
-          then
+          # A key generated with `minisign -G -W` carries no password and
+          # minisign never prompts for one. That is a supported and, for CI, a
+          # sensible setup: the key is already encrypted at rest as a repository
+          # secret, and the password only ever protected the file on the
+          # maintainer's disk — while being the one moving part that can silently
+          # not match. So an empty MINISIGN_PASSWORD is a configuration, not an
+          # error.
+          #
+          # Legacy (non-prehashed) mode either way: a plain Ed25519 signature
+          # over the file, which `arachnid-cli self update` verifies with
+          # ed25519-dalek rather than carrying a second hash implementation.
+          # Do not add -H.
+          sign() {
+            if [ -n "$password" ]; then
+              printf '%s\n' "$password" | minisign -S -s minisign.key -m dist/SHA256SUMS \
+                  -t "arachnid-forensic ${{ github.event.inputs.tag || github.ref_name }}"
+            else
+              minisign -S -s minisign.key -m dist/SHA256SUMS \
+                  -t "arachnid-forensic ${{ github.event.inputs.tag || github.ref_name }}"
+            fi
+          }
+
+          if ! sign; then
             shred -u minisign.key
-            echo "::error::Signing failed. If minisign said \"Wrong password for that key\"," \
-                 "MINISIGN_PASSWORD does not match the key in MINISIGN_SECRET_KEY." \
-                 "Re-set it with:  gh secret set MINISIGN_PASSWORD --repo ${{ github.repository }}" \
-                 "and paste the password with no trailing newline (Ctrl-D on the same line)."
+            echo "::error::Signing failed. \"Wrong password for that key\" means" \
+                 "MINISIGN_PASSWORD does not match MINISIGN_SECRET_KEY. Either re-set it:" \
+                 "gh secret set MINISIGN_PASSWORD --repo ${{ github.repository }}" \
+                 "(Ctrl-D on the same line, no trailing newline), or drop the password" \
+                 "entirely: minisign -G -W -f, re-pin the new public key, and delete the" \
+                 "MINISIGN_PASSWORD secret. See release/README.md."
             exit 1
           fi
           shred -u minisign.key
