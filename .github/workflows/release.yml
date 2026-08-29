@@ -37,8 +37,10 @@ jobs:
             os: ubuntu-latest
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
+          # Both macOS slices build on the arm64 image: macos-13 is retired, and
+          # Apple's toolchain cross-compiles to x86_64 from arm64 without help.
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
           - target: aarch64-apple-darwin
             os: macos-latest
           - target: x86_64-pc-windows-msvc
@@ -121,15 +123,32 @@ jobs:
       # The tool must stay inspectable — no packing, no obfuscation. If our own
       # subcommand names are not visible to `strings`, something in the pipeline
       # is hiding the binary from the analysts we ask to allowlist it.
+      # grep -a rather than `strings | grep -q`. Two reasons, both learned the
+      # hard way on the first run: `grep -q` exits at the first match and
+      # SIGPIPEs `strings`, which Xcode's copy reports as "failed to flush
+      # output" and which `-o pipefail` then turns into a failed step. And it
+      # drops a dependency on which `strings` implementation the runner ships.
+      # grep -a tests the same property directly: our own subcommand names are
+      # present as literal bytes, so the binary is not packed or obfuscated.
       - name: Verify the binary is inspectable
         if: runner.os != 'Windows'
         shell: bash
         run: |
           bin=$(ls dist/arachnid-cli-*)
+          missing=0
           for marker in collect recover sanitize doctor "Arachnid Forensic"; do
-            strings "$bin" | grep -qF "$marker" \
-              || { echo "FAIL: '$marker' is not visible to strings" >&2; exit 1; }
+            if grep -aqF "$marker" "$bin"; then
+              echo "  found: $marker"
+            else
+              echo "  MISSING: $marker" >&2
+              missing=1
+            fi
           done
+          if [ "$missing" -ne 0 ]; then
+            echo "The release build must stay readable to the analysts we ask to" >&2
+            echo "allowlist it. Something in the pipeline is hiding it." >&2
+            exit 1
+          fi
           echo "inspectable: confirmed"
 
       - uses: actions/upload-artifact@v4
