@@ -62,12 +62,23 @@ The public key goes in four places, all of them the same value:
 | `install.ps1` | `$PubKey =` — the same line |
 | GitHub → repository **variables** → `MINISIGN_PUBKEY` | the same line, so the release workflow can embed it in the binary and self-check its own signature |
 
-The secret key and its password go in GitHub → repository **secrets**:
+The secret key goes in GitHub → repository **secrets**:
 
 | Secret | What |
 |---|---|
-| `MINISIGN_SECRET_KEY` | the contents of `~/.arachnid/release.key` |
-| `MINISIGN_PASSWORD` | the password protecting it |
+| `MINISIGN_SECRET_KEY` | the contents of the secret key file |
+| `MINISIGN_PASSWORD` | the password protecting it — **omit if the key has none** |
+
+### On passwords for a CI signing key
+
+`minisign -G -W` generates a key with no password, and the release workflow
+accepts that. It is worth considering rather than dismissing: the key is already
+encrypted at rest as a repository secret, so the password only protects the file
+on the maintainer's own disk — while being the one moving part that can silently
+fail to match and turn a twenty-minute build into "Wrong password for that key".
+
+Keep the password if the key file also lives somewhere a password would help.
+Drop it if the only copy that matters is the one in GitHub.
 
 ## Signing mode
 
@@ -84,8 +95,14 @@ loudly at verification instead of quietly verifying nothing.
 
 ## Rotating the key
 
-Rotation is a release, not a patch: the new public key has to reach users
-through a build they already trust.
+**Rotate immediately, no ceremony, if the secret key is ever exposed** — pasted
+into a chat or an issue, committed by accident, or copied onto a machine it
+should not be on. Before the first release there is nothing to coordinate: the
+steps below collapse into "generate, re-pin, carry on", because no installed
+binary trusts the old key yet.
+
+After a release has shipped, rotation is a release of its own, not a patch: the
+new public key has to reach users through a build they already trust.
 
 1. Generate the new key and pin it everywhere above.
 2. Cut a release signed with the **old** key, whose binary embeds the **new**
