@@ -208,13 +208,32 @@ jobs:
           fi
           sudo apt-get update && sudo apt-get install -y minisign
           printf '%s\n' "$MINISIGN_SECRET_KEY" > minisign.key
+
+          # Trailing whitespace is the classic way this secret goes wrong:
+          # `gh secret set` keeps whatever reached its stdin, so a stray newline
+          # or a copied trailing space becomes part of the password and minisign
+          # answers "Wrong password for that key" with no hint as to why.
+          password="$(printf '%s' "$MINISIGN_PASSWORD" | tr -d '\r\n')"
+
           # Legacy (non-prehashed) mode: a plain Ed25519 signature over the file,
           # which `arachnid-cli self update` verifies with ed25519-dalek rather
           # than carrying a second hash implementation. Do not add -H.
-          printf '%s\n' "$MINISIGN_PASSWORD" \
-            | minisign -S -s minisign.key -m dist/SHA256SUMS \
-                -t "arachnid-forensic ${{ github.ref_name }}"
+          if ! printf '%s\n' "$password" \
+                | minisign -S -s minisign.key -m dist/SHA256SUMS \
+                    -t "arachnid-forensic ${{ github.event.inputs.tag || github.ref_name }}"
+          then
+            shred -u minisign.key
+            echo "::error::Signing failed. If minisign said \"Wrong password for that key\"," \
+                 "MINISIGN_PASSWORD does not match the key in MINISIGN_SECRET_KEY." \
+                 "Re-set it with:  gh secret set MINISIGN_PASSWORD --repo ${{ github.repository }}" \
+                 "and paste the password with no trailing newline (Ctrl-D on the same line)."
+            exit 1
+          fi
           shred -u minisign.key
+
+          # Verify what we just produced, with the same public key the installers
+          # and `self update` pin. A release that cannot verify against the
+          # published key is worse than no release.
           minisign -Vm dist/SHA256SUMS -P "${{ vars.MINISIGN_PUBKEY }}"
 
       - name: Attach to the release
