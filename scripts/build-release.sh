@@ -20,6 +20,20 @@ GPG_KEY="${GPG_KEY:-}"
 need() { command -v "$1" >/dev/null || { echo "missing required tool: $1" >&2; exit 1; }; }
 need cargo
 need musl-gcc
+
+# musl-gcc compiles with -nostdinc, so on Debian and Ubuntu the kernel headers
+# libpcap needs are not on its include path and the build stops at
+# `linux/if.h: No such file or directory`. Link them in once:
+#
+#   sudo ln -sfn /usr/include/linux        /usr/include/x86_64-linux-musl/linux
+#   sudo ln -sfn /usr/include/asm-generic  /usr/include/x86_64-linux-musl/asm-generic
+#   sudo ln -sfn /usr/include/x86_64-linux-gnu/asm /usr/include/x86_64-linux-musl/asm
+#
+# .github/workflows/release.yml does exactly this before building.
+if [ ! -e /usr/include/x86_64-linux-musl/linux ] && [ -d /usr/include/x86_64-linux-musl ]; then
+    echo "warning: kernel headers are not linked into musl's include path;" >&2
+    echo "         libpcap will fail on linux/if.h. See the comment above." >&2
+fi
 need curl
 need tar
 
