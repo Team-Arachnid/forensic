@@ -73,12 +73,18 @@ detect_target() {
             TARGET="$arch-apple-darwin"
             ;;
         Linux)
-            # A musl host (Alpine, and most containers) cannot run a glibc
-            # build, and the failure it gives is "not found" on a file that is
-            # plainly there — so this is worth getting right rather than
-            # defaulting.
-            if is_musl; then
-                TARGET="$arch-unknown-linux-musl"
+            # The glibc build links libpcap dynamically, and its soname is not
+            # the same everywhere: a binary built on Ubuntu asks for
+            # libpcap.so.0.8, which Arch (libpcap.so.1) cannot satisfy, and it
+            # then fails to start at all rather than degrading. The musl build is
+            # fully static — libpcap included — so it runs on every distribution
+            # and on musl hosts like Alpine.
+            #
+            # So x86_64 takes musl regardless of the host's libc. aarch64 has no
+            # musl build published yet and falls back to glibc, where the
+            # dependency check below matters.
+            if [ "$arch" = "x86_64" ]; then
+                TARGET="x86_64-unknown-linux-musl"
             else
                 TARGET="$arch-unknown-linux-gnu"
             fi
@@ -89,17 +95,6 @@ detect_target() {
     esac
 }
 
-is_musl() {
-    # ldd prints its own libc's identity; on musl that names musl. Checking for
-    # the loader by path is the fallback for images with no ldd at all.
-    if have ldd && ldd --version 2>&1 | grep -qi musl; then
-        return 0
-    fi
-    for loader in /lib/ld-musl-*.so.1; do
-        if [ -e "$loader" ]; then return 0; fi
-    done
-    return 1
-}
 
 # --------------------------------------------------------------------------
 # Download
@@ -175,28 +170,10 @@ verify_signature() {
 verified and will not be installed. See release/README.md, or install from source:
   cargo install --git https://github.com/$REPO arachnid-cli"
 
-    if have minisign; then
-        printf '%s\n' "$PUBKEY" > "$TMP/minisign.pub"
-        minisign -Vm "$1" -x "$2" -p "$TMP/minisign.pub" >/dev/null \
-            || die "signature verification FAILED. The download does not come from the release
-key pinned in this installer. Nothing has been installed. Do not run the
-downloaded file; report this."
-        say "    signature: verified with minisign"
-        return 0
-    fi
+    have minisign || die "minisign was not found, and this installer will not skip the signature
+check.
 
-    if have signify || have signify-openbsd; then
-        sig_tool="$(command -v signify || command -v signify-openbsd)"
-        printf '%s\n' "$PUBKEY" > "$TMP/minisign.pub"
-        "$sig_tool" -V -p "$TMP/minisign.pub" -x "$2" -m "$1" >/dev/null 2>&1 \
-            || die "signature verification FAILED. Nothing has been installed."
-        say "    signature: verified with signify"
-        return 0
-    fi
-
-    die "no signature verification tool found, and this installer will not skip the check.
-
-Install one, then re-run:
+Install it, then re-run:
   macOS          brew install minisign
   Debian/Ubuntu  sudo apt install minisign
   Fedora         sudo dnf install minisign
@@ -205,6 +182,16 @@ Install one, then re-run:
 
 Or download the release, its SHA256SUMS and SHA256SUMS.minisig by hand from
 https://github.com/$REPO/releases and verify them yourself."
+
+    # -P takes the key directly. -p wants a two-line public *key file*, and
+    # handing it the bare key line fails with "Error while loading the public key
+    # file" — which reads exactly like a tampered download rather than a wrong
+    # flag.
+    minisign -Vm "$1" -x "$2" -P "$PUBKEY" >/dev/null \
+        || die "signature verification FAILED. The download does not come from the release
+key pinned in this installer. Nothing has been installed. Do not run the
+downloaded file; report this."
+    say "    signature: verified"
 }
 
 sha256_of() {
@@ -327,6 +314,8 @@ pkg_hint() {
 
 check_libpcap() {
     [ "$(uname -s)" = "Linux" ] || return 0
+    # The musl build carries libpcap inside it; there is nothing to look for.
+    case "$TARGET" in *-musl) return 0 ;; esac
     # Any of these means the runtime library is present. The -dev package is a
     # build-time concern and is deliberately not required here.
     for probe in /usr/lib/libpcap.so.1 /usr/lib64/libpcap.so.1 \
@@ -429,6 +418,20 @@ PATH_NOTE=""
 setup_path
 check_libpcap
 offer_setcap
+
+# Run it. Everything above verified the bytes that were downloaded; this is the
+# only step that answers "does it actually work on this machine", which is a
+# different question — a dynamically linked build can pass every signature and
+# digest check and still not start for want of a shared library.
+if ! "$EXISTING" version >/dev/null 2>&1; then
+    warn "installed, but $BIN does not run on this machine:"
+    "$EXISTING" version 2>&1 | sed 's/^/    /' >&2 || true
+    say ""
+    say "  The binary is at $EXISTING and it verified correctly, so this is a"
+    say "  runtime dependency rather than a bad download. Please report it with"
+    say "  the message above: that combination is a packaging bug, not your setup."
+    exit 1
+fi
 
 say ""
 step "Installed"
