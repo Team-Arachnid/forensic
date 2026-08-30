@@ -68,7 +68,11 @@ pub fn build_hash() -> &'static str {
 /// same channel as the artifact proves the download was not corrupted, not that
 /// it came from us.
 pub fn release_pubkey() -> Option<&'static str> {
-    option_env!("ARACHNID_MINISIGN_PUBKEY")
+    // `option_env!` hands back Some("") when the variable is set but empty,
+    // which is how CI presents an unset repository variable. An empty key is an
+    // absent key, and saying "unreadable" instead of "none" sends someone
+    // looking for a corrupt key that was never there.
+    option_env!("ARACHNID_MINISIGN_PUBKEY").filter(|k| !k.trim().is_empty())
 }
 
 pub fn version() -> &'static str {
