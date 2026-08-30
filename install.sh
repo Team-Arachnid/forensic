@@ -41,7 +41,7 @@ MARKER="# added by arachnid-cli installer"
 # "checksum only" — a checksum fetched over the same channel as the artifact
 # proves the download was not corrupted and nothing at all about where it came
 # from. Rotating it is a release, not a patch; see release/README.md.
-PUBKEY="${ARACHNID_PUBKEY:-RWSa05GQC5c3Dm/H9zcNXL8f/BzSD2ssDBVyDHXUaqeWcWaUasPk7cry}"
+PUBKEY="${ARACHNID_PUBKEY:-RWT8KhRGhzRZ4gmiGJHOgKJOfZCY6dxDG/SIew+5RDH0LOkPXHFJENGh}"
 
 say()  { printf '%s\n' "$*"; }
 step() { printf '==> %s\n' "$*"; }
