@@ -61,7 +61,15 @@ $PubKey = if ($env:ARACHNID_PUBKEY) { $env:ARACHNID_PUBKEY } else { "RWT8KhRGhzR
 
 function Write-Step { param([string]$m) Write-Host "==> $m" }
 function Write-Detail { param([string]$m) Write-Host "    $m" }
-function Fail { param([string]$m) Write-Error $m; exit 1 }
+function Fail {
+    # Not Write-Error: it wraps the message in a PowerShell exception trace, so
+    # the operator reads "At C:\...install.ps1:117 char:9" before the sentence
+    # that actually tells them what happened. This is an installer, not a
+    # cmdlet — a plain message on stderr is the right output.
+    param([string]$m)
+    [Console]::Error.WriteLine("error: $m")
+    exit 1
+}
 
 # --------------------------------------------------------------------------
 # Platform
@@ -87,7 +95,7 @@ function Get-Target {
 # --------------------------------------------------------------------------
 
 function Assert-Signature {
-    param([string]$File, [string]$SigFile, [string]$KeyFile)
+    param([string]$File, [string]$SigFile)
 
     if (-not $PubKey) {
         Fail @"
@@ -111,8 +119,10 @@ https://github.com/$Repo/releases and verify them yourself.
 "@
     }
 
-    Set-Content -Path $KeyFile -Value $PubKey -Encoding ascii
-    & $minisign.Source -Vm $File -x $SigFile -p $KeyFile | Out-Null
+    # -P takes the key directly. -p wants a two-line public *key file*, and
+    # handing it the bare key line fails with "Error while loading the public key
+    # file" — which this script then reported as a tampered download.
+    & $minisign.Source -Vm $File -x $SigFile -P $PubKey | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Fail @"
 signature verification FAILED. The download does not come from the release key
@@ -120,7 +130,7 @@ pinned in this installer. Nothing has been installed. Do not run the downloaded
 file; report this.
 "@
     }
-    Write-Detail 'signature: verified with minisign'
+    Write-Detail 'signature: verified'
 }
 
 function Assert-Digest {
@@ -282,7 +292,7 @@ try {
 
     Write-Step 'Verifying'
     # Signature first: SHA256SUMS is only worth reading once it is known to be ours.
-    Assert-Signature -File "$tmp\SHA256SUMS" -SigFile "$tmp\SHA256SUMS.minisig" -KeyFile "$tmp\minisign.pub"
+    Assert-Signature -File "$tmp\SHA256SUMS" -SigFile "$tmp\SHA256SUMS.minisig"
     Assert-Digest -File "$tmp\$asset" -ChecksumFile "$tmp\SHA256SUMS" -Name $asset
 
     Write-Step "Installing to $InstallDir"
@@ -290,6 +300,19 @@ try {
     # Move into place in one step, so an interrupted install never leaves a
     # half-written binary where a working one used to be.
     Move-Item -Path "$tmp\$asset" -Destination $exePath -Force
+
+    # Everything above verified the bytes that were downloaded; this is the only
+    # step that answers "does it actually work on this machine", which is a
+    # different question.
+    & $exePath version *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Fail @"
+installed, but $Bin does not run on this machine. The binary is at
+$exePath and it verified correctly, so this is a runtime dependency rather than
+a bad download. Please report it: that combination is a packaging bug, not your
+setup.
+"@
+    }
 
     $pathNote = Set-ProfilePath -Dir $InstallDir
     Test-Npcap
