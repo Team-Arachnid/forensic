@@ -146,9 +146,11 @@ commands when they exist rather than before.
 
 In order:
 
-1. works out your OS, architecture and libc (musl and glibc are different
-   downloads, and the failure when you get it wrong is a "not found" on a file
-   that is plainly there)
+1. works out your OS and architecture. On x86_64 Linux it always takes the
+   **static musl build**, whatever libc you run: the glibc build links libpcap
+   dynamically and its soname differs between distributions, so an Ubuntu-built
+   binary simply will not start on Arch. The static one has libpcap inside it
+   and runs everywhere
 2. downloads the binary, `SHA256SUMS`, and the signature over `SHA256SUMS`
 3. **verifies the signature, then the digest.** Either failure aborts, having
    installed nothing. There is no `--force` and no `--skip-verify`
