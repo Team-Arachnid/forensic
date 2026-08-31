@@ -66,7 +66,7 @@ export function Modules() {
                       className={`-ml-px flex items-baseline gap-3 border-l-2 py-2.5 pl-5 transition-colors duration-200 ${
                         isActive
                           ? "border-thread text-ink"
-                          : "border-transparent text-ink-faint hover:text-ink-muted"
+                          : "border-transparent text-ink-muted hover:text-ink"
                       }`}
                     >
                       <span className="data text-xs">{m.index}</span>

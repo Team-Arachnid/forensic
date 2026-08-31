@@ -40,7 +40,7 @@ looked like a generic "hacker" site would undercut its own seriousness.
 | `--surface-2` | `#1B1B1F` | inset wells, code blocks, table rows |
 | `--ink` | `#F3F2EE` | primary text — warm off-white, not pure `#FFF` (pure white on near-black vibrates over long reading) |
 | `--ink-muted` | `#8D8C92` | secondary text, captions, metadata |
-| `--ink-faint` | `#5A5A61` | tertiary — timestamps, disabled, hairline labels |
+| `--ink-faint` | `#807F86` | tertiary — timestamps, data annotations, hairline labels |
 | `--thread` | `#C81E3A` | the accent — a deep arterial / sealing-wax crimson. Reads as "sealed evidence thread", not "warning light". Used only for the signature, key CTAs, and small structural marks — never a large fill. |
 | `--thread-bright` | `#E23150` | hover / focus lift on `--thread`, and the ignited node in 3D |
 | `--thread-dim` | `#4A0B18` | low-opacity borders, glow falloff, hover wells |
@@ -51,7 +51,7 @@ looked like a generic "hacker" site would undercut its own seriousness.
 - `--ink` `#F3F2EE` on `--void` `#08080A` → **17.9 : 1** (AAA — body + headings)
 - `--ink` on `--surface` `#131316` → **16.6 : 1** (AAA)
 - `--ink-muted` `#8D8C92` on `--void` → **6.00 : 1** (AA normal text); on `--surface` **5.56 : 1** (AA)
-- `--ink-faint` `#5A5A61` on `--void` → **2.93 : 1** — used **only** for large/≥18.66px or non-essential decoration, never for essential body text.
+- `--ink-faint` `#807F86` on `--void` → **5.05 : 1** (AA); on `--surface` **4.68 : 1** (AA) — the tertiary tier for timestamps, hashes and data annotations. Kept dimmer than `--ink-muted` so the hierarchy reads, but lifted to clear AA rather than sit below it.
 - `--thread` `#C81E3A` on `--void` → **3.53 : 1** — passes AA for **large text only** (≥18.66px or ≥14px bold) and for non-text UI marks. Red-on-black is the classic quiet-fail combination, which is exactly why this was measured: crimson is **not** used for small body links.
 - `--thread-bright` `#E23150` on `--void` → **4.56 : 1** — the crimson used for **small** text and inline links, because it clears the 4.5:1 AA threshold where `--thread` does not.
 - `--ink` on `--thread` fill (off-white label on crimson button) → **5.06 : 1** (AA) — so the primary CTA is a genuine crimson fill with off-white label, verified rather than assumed.
