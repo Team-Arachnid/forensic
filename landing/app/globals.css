@@ -1,0 +1,225 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ------------------------------------------------------------------ *
+ * Design tokens — the single source of truth. Every colour and type
+ * role in the site traces back to a variable defined here. See DESIGN.md.
+ * ------------------------------------------------------------------ */
+:root {
+  /* colour */
+  --void: #08080a;
+  --surface: #131316;
+  --surface-2: #1b1b1f;
+  --ink: #f3f2ee;
+  --ink-muted: #8d8c92;
+  --ink-faint: #5a5a61;
+  --thread: #c81e3a;
+  --thread-bright: #e23150;
+  --thread-dim: #4a0b18;
+  --line: #26262b;
+
+  /* type — display/body come from Fontshare (loaded in layout head),
+     mono from next/font. Fallback stacks keep the page legible before
+     or without the Fontshare fetch. */
+  --font-display: "Clash Display", "Space Grotesk", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", sans-serif;
+  --font-body: "General Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* --font-mono is injected by next/font as --font-mono-jb; alias it. */
+  --font-mono: var(--font-mono-jb), ui-monospace, "SF Mono", "JetBrains Mono",
+    "IBM Plex Mono", Menlo, Consolas, monospace;
+
+  --shell-pad: clamp(1.25rem, 5vw, 4rem);
+}
+
+/* ------------------------------------------------------------------ *
+ * Base
+ * ------------------------------------------------------------------ */
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: auto; /* Lenis owns smooth scroll; avoid double easing */
+    background-color: var(--void);
+  }
+
+  body {
+    background-color: var(--void);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-feature-settings: "ss01", "cv01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: var(--thread);
+    color: var(--ink);
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.08;
+    text-wrap: balance;
+  }
+
+  /* Visible keyboard focus on every interactive element. Never removed —
+     only replaced with a design-consistent ring. */
+  :focus-visible {
+    outline: 2px solid var(--thread-bright);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* Don't show the ring for mouse users who click, only for keyboard. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Subtle, on-theme scrollbar (progressive enhancement only). */
+  @supports (scrollbar-color: red blue) {
+    html {
+      scrollbar-color: var(--line) var(--void);
+      scrollbar-width: thin;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Components
+ * ------------------------------------------------------------------ */
+@layer components {
+  .shell {
+    width: 100%;
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: var(--shell-pad);
+  }
+
+  /* The mono chapter mark: "CH.01 — THE FRACTURE" */
+  .chapter-mark {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--thread-bright);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .chapter-mark::before {
+    content: "";
+    width: 1.75rem;
+    height: 1px;
+    background: var(--thread);
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+
+  /* Raised panel that keeps content legible over the fixed web. */
+  .panel {
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    border: 1px solid var(--line);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+
+  .data {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+    letter-spacing: 0.01em;
+  }
+
+  /* Skip link — visible only when focused. */
+  .skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 100;
+    transform: translateY(-150%);
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--thread);
+    padding: 0.6rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .skip-link:focus {
+    transform: translateY(0);
+  }
+
+  /* Quiet, quick link underline — a micro-interaction, not a set piece. */
+  .link-quiet {
+    position: relative;
+    color: var(--ink);
+    transition: color 150ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .link-quiet::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -2px;
+    width: 100%;
+    height: 1px;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .link-quiet:hover {
+    color: var(--thread-bright);
+  }
+  .link-quiet:hover::after {
+    transform: scaleX(1);
+  }
+}
+
+/* Footer mark settling into place as the threads resolve. */
+@keyframes web-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.94) rotate(-4deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Reduced motion — a hard requirement, not a nicety. Disables scroll
+ * scrub and continuous 3D; the SVG fallback replaces the WebGL scene
+ * (handled in React by reading the same media query).
+ * ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
