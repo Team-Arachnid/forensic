@@ -1,5 +1,5 @@
+import Image from "next/image";
 import { links } from "@/lib/site";
-import { WebMark } from "@/components/web-mark";
 
 const columns: { title: string; items: { label: string; href: string }[] }[] = [
   {
@@ -23,12 +23,23 @@ export function SiteFooter() {
   return (
     <footer className="relative border-t border-line bg-void">
       <div className="shell py-16 md:py-24">
-        {/* The threads resolve into the mark. */}
+        {/* The mark, resolved. */}
         <div className="mb-14 flex flex-col items-center text-center">
-          <div className="relative h-40 w-40">
-            <WebMark
-              className="h-full w-full text-thread [animation:web-settle_1200ms_cubic-bezier(0.22,1,0.36,1)_both]"
-              title="The Arachnid Forensic mark: three module nodes joined by one thread"
+          <div className="relative flex h-40 w-40 items-center justify-center">
+            <div
+              aria-hidden="true"
+              className="absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(circle at center, rgba(200,30,58,0.18), transparent 66%)",
+              }}
+            />
+            <Image
+              src="/brand/mark.png"
+              alt="Arachnid Forensic"
+              width={128}
+              height={128}
+              className="relative h-28 w-28 [animation:web-settle_1200ms_cubic-bezier(0.22,1,0.36,1)_both]"
             />
           </div>
           <p className="mt-6 max-w-md text-balance font-display text-lg text-ink">

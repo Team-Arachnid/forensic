@@ -10,23 +10,22 @@ next person changing a colour knows why it was that colour.
 
 Arachnid is three tools — Core (acquire), Recover (extract), Sanitize (destroy)
 — stitched into one suite by a single signed chain-of-custody log. The whole
-site is built around that single fact, and so is the one signature element: a
-**thread/node network**. It is literally a spider's web, and it is literally
-what the product does — weaving one connected evidence trail across three
-otherwise-separate tools. That double meaning is the justification for the web
-being the signature, not decoration.
+site is built around that single fact, and so is the one signature element: the
+**Arachnid mark itself** — the spider-in-web emblem. It is the brand, and it is
+literally what the product is: a web that ties three otherwise-separate tools
+into one connected evidence trail. That double meaning is why the mark, not a
+decorative device, is the throughline.
 
-The web is a persistent WebGL layer behind the entire page, not a hero toy. Its
-state is driven by scroll:
+The mark recurs, quietly, in two places so the page reads as one object:
 
-| Scroll phase | Section | Web behaviour |
-|---|---|---|
-| 0.00–0.14 | Hero | three nodes breathing, threads faint but present |
-| 0.14–0.30 | The Fracture | nodes drift apart, threads decay — fragmentation |
-| 0.30–0.44 | The Thread | threads redraw between the nodes, node-by-node |
-| 0.44–0.74 | Core / Recover / Sanitize | camera settles on each node in turn; the active module's node ignites |
-| 0.74–0.88 | The Ledger | web holds steady; signed pulses travel the threads |
-| 0.88–1.00 | Footer | the web contracts and resolves toward the Arachnid mark |
+- a single large, faint watermark of the mark fixed behind the entire page —
+  present but never competing with copy (opacity ≈ 0.055, under a vignette scrim);
+- resolved at full strength in the footer, over a soft crimson glow, as the page
+  lands on the thesis line.
+
+The narrative itself carries the motion: scroll-reveals, the streaming custody
+log, and the crimson `--thread` accent do the work a WebGL scene used to. The
+signature is the mark, held consistently, not an effect layered over the page.
 
 ## 2. Colour tokens
 
@@ -102,31 +101,35 @@ pushed toward the same clichés. Each was rejected on purpose:
 
 - **Terminal-green-on-black** → rejected. Accent is arterial crimson (`--thread`),
   which carries the "sealed evidence" meaning the product is actually about.
-- **Glitch text / scanlines / matrix rain** → rejected. The single motion device
-  is the thread web; nothing competes with it.
+- **Glitch text / scanlines / matrix rain** → rejected. Motion is limited to
+  quiet scroll-reveals and the streaming custody log; nothing competes for
+  attention.
 - **Bright acid alert-red** → rejected in favour of a deep sealing-wax crimson,
   used sparingly and never as a large field.
 - **Numbered 01/02/03 with no ordering logic** → the chapters follow the real
   acquire → extract → destroy pipeline; the numbering means something.
-- **Stock Heroicons + gradient-blob hero** → the hero centrepiece is the web
-  itself; icons are custom line marks echoing the web, no emoji anywhere.
+- **Stock Heroicons + gradient-blob hero** → the hero leads with the thesis
+  headline and the real install command; the Arachnid mark recurs as a quiet
+  watermark, and no emoji is used anywhere.
 - **Generic FAQ/doc landing pattern** (what the design tool suggested) → rejected;
   this is a single scroll-narrative, not a search-bar-and-accordion template.
 
 ## 6. Motion & fallbacks
 
-- One orchestrated device (the web). Micro-interactions (button hover, link
-  underline) are quiet and quick (120–180ms), never set-pieces.
-- `prefers-reduced-motion`: scroll-scrub and continuous 3D motion are disabled;
-  the web is replaced by a static SVG rendering of the same node/thread motif.
-- No-WebGL / low-power / touch: the WebGL scene is dynamically imported
-  (`ssr: false`), never blocks LCP, and degrades to the same SVG fallback. The
-  pinned module chapters degrade to a normal stacked layout below `md`.
+- The background is a **static** logo watermark — no WebGL, no scroll coupling,
+  nothing to block LCP. Micro-interactions (button hover, link underline) are
+  quiet and quick (120–180ms), never set-pieces.
+- `prefers-reduced-motion`: smooth scroll (Lenis), scroll-reveals, the custody-log
+  stream and the footer mark settle are all disabled; the page renders fully and
+  statically. The watermark is unaffected because it never moved.
+- Responsive: the pinned module chapters degrade from the sticky index layout to
+  a normal stacked layout below `lg`; verified no horizontal scroll from 375px up.
 
 ## 7. Signature rationale (the justification test)
 
 The brief's bar: the signature must be justified by the subject, not chosen for
-its own sake. The web passes because it is doing double duty — a spider's web
-(the brand mark is a spider) *and* a faithful diagram of the product (three tool
-nodes joined by one thread). Remove the web and you lose the one-sentence pitch;
-that is the test for a real signature versus decoration.
+its own sake. The Arachnid mark passes because it is doing double duty — a
+spider's web (the brand is a spider) *and* a picture of the product (a web that
+binds three separate tools into one evidence trail). Holding that single mark
+consistently — faint behind the page, resolved in the footer — is the throughline;
+it is the brand and the pitch in one object, not decoration.

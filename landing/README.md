@@ -10,8 +10,8 @@ routes.
 - **Tailwind CSS** layered on a custom CSS-variable token theme — the default
   Tailwind palette is replaced, not extended. See `app/globals.css` and
   [`DESIGN.md`](./DESIGN.md).
-- **React Three Fiber + three** for the signature thread/node web, dynamically
-  imported (no SSR) with an SVG fallback for reduced-motion and no-WebGL.
+- The **Arachnid logo mark** is the signature: a faint full-bleed watermark
+  behind the page (`next/image`, static) and resolved in the footer.
 - **GSAP + ScrollTrigger** for scroll reveals, **Lenis** for smooth scroll —
   both disabled under `prefers-reduced-motion`.
 - Fonts: Clash Display + General Sans (Fontshare) for display/body, JetBrains
@@ -52,7 +52,7 @@ canonical tags resolve to absolute URLs.
 
 - WCAG AA contrast verified on the dark palette (see `DESIGN.md §2`).
 - Visible keyboard focus on every interactive element.
-- `prefers-reduced-motion` disables scroll-scrub and continuous 3D; the SVG web
-  fallback replaces the WebGL scene.
+- `prefers-reduced-motion` disables smooth scroll, scroll-reveals and the
+  custody-log stream; the static logo watermark background is unaffected.
 - Responsive to 375px; the module chapters degrade from the sticky index layout
   to a stacked layout below `lg`.
