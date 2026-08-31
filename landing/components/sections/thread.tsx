@@ -34,7 +34,7 @@ export function Thread() {
         <Reveal className="mx-auto mt-12 max-w-2xl" delay={0.1}>
           <div className="panel p-4 sm:p-5">
             <p className="data text-xs leading-relaxed text-ink-muted">
-              <span className="text-thread">sig</span> 3f9a2c…e1c
+              <span className="text-thread-bright">sig</span> 3f9a2c…e1c
               <span className="mx-2 text-ink-faint">·</span>
               <span className="text-ink">
                 {'{'}&quot;seq&quot;:7,&quot;phase&quot;:&quot;recover&quot;,&quot;prev&quot;:&quot;a17e…&quot;,

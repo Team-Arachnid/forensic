@@ -62,7 +62,7 @@ export function Fracture() {
               </div>
               <p className="data text-xs text-ink-faint">{f.stamp}</p>
               <p className="data text-sm leading-relaxed text-ink">{f.line}</p>
-              <p className="data mt-auto border-t border-line pt-3 text-xs text-thread">
+              <p className="data mt-auto border-t border-line pt-3 text-xs text-thread-bright">
                 {f.custody}
               </p>
             </div>

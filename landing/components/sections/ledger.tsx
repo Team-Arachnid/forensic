@@ -68,7 +68,7 @@ export function Ledger() {
       className="relative py-28 md:py-40"
     >
       <div className="shell">
-        <div className="grid gap-12 lg:grid-cols-[1fr_1.15fr] lg:items-center lg:gap-16">
+        <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-center lg:gap-16">
           <Reveal>
             <p className="chapter-mark">The Ledger</p>
             <h2
@@ -84,15 +84,15 @@ export function Ledger() {
             </p>
             <ul className="mt-8 space-y-3 text-sm text-ink-muted">
               <li className="flex gap-3">
-                <span className="data text-thread">verify</span>
+                <span className="data text-thread-bright">verify</span>
                 <span>re-hashes every artifact and re-checks every signature — implemented independently of collection.</span>
               </li>
               <li className="flex gap-3">
-                <span className="data text-thread">exit 0</span>
+                <span className="data text-thread-bright">exit 0</span>
                 <span>intact. <span className="data text-ink">exit 3</span> tampered — stable across releases, for IR scripts.</span>
               </li>
               <li className="flex gap-3">
-                <span className="data text-thread">chain</span>
+                <span className="data text-thread-bright">chain</span>
                 <span>delete or reorder a record and the prev-hash link breaks visibly.</span>
               </li>
             </ul>
@@ -130,7 +130,7 @@ export function Ledger() {
                 <ol className="space-y-1.5" aria-label="Signed chain-of-custody records">
                   {records.slice(0, shown).map((r) => (
                     <li key={r.seq} className="data text-[0.72rem] leading-relaxed sm:text-xs">
-                      <span className="text-thread">sig</span>{" "}
+                      <span className="text-thread-bright">sig</span>{" "}
                       <span className="text-ink-faint">{r.sha}</span>{" "}
                       <span className="text-ink-muted">seq={r.seq}</span>{" "}
                       <span className="text-ink">{r.phase}</span>{" "}
@@ -152,7 +152,7 @@ export function Ledger() {
                   </p>
                 ) : (
                   <p
-                    className="data mt-4 text-xs text-thread"
+                    className="data mt-4 text-xs text-thread-bright"
                     aria-hidden="true"
                   >
                     <span className="inline-block h-3.5 w-2 animate-caret bg-thread align-middle" />

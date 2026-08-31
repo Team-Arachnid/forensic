@@ -52,7 +52,7 @@ function phaseFromProgress(p: number): PhaseState {
   // threads: faint in hero, decay in fracture, draw in The Thread, hold after.
   const heroBase = 0.16 * (1 - smoothstep(0.12, 0.18, p));
   const decay = 1 - fracture;
-  const drawn = smoothstep(0.3, 0.44, p);
+  const drawn = smoothstep(0.3, 0.44, p) * 0.82;
   const weave = Math.max(heroBase * decay, drawn) * (1 - 0.85 * smoothstep(0.9, 1, p));
 
   // module focus across 0.44..0.74, one node each.
@@ -173,7 +173,7 @@ function Network({ progressRef }: { progressRef: React.MutableRefObject<number> 
       lGeo.setAttribute("color", new THREE.BufferAttribute(lineCol, 3));
 
       const pMat = new THREE.PointsMaterial({
-        size: 0.16,
+        size: 0.14,
         map: tex,
         vertexColors: true,
         transparent: true,
@@ -239,8 +239,8 @@ function Network({ progressRef }: { progressRef: React.MutableRefObject<number> 
       if (moduleSlot >= 0 && moduleSlot === ph.focus) {
         const f = ph.focusStrength;
         cA.lerp(COL_BRIGHT, f);
-        brightness += f * 1.4;
-        size += f * 1.6;
+        brightness += f * 0.9;
+        size += f * 1.1;
       }
       // gentle idle pulse on module nodes
       if (moduleSlot >= 0) brightness += 0.12 * (0.5 + 0.5 * Math.sin(t * 1.4 + moduleSlot));
@@ -267,7 +267,7 @@ function Network({ progressRef }: { progressRef: React.MutableRefObject<number> 
 
       // is this a spine edge (module triangle / hub)?
       const spine = e < 6;
-      let bright = spine ? 1 : 0.5;
+      let bright = spine ? 0.88 : 0.42;
 
       // travelling pulse along threads during The Ledger
       if (ledger > 0) {
@@ -277,7 +277,7 @@ function Network({ progressRef }: { progressRef: React.MutableRefObject<number> 
       // module focus lights that module's spokes
       if (ph.focus >= 0) {
         const mNode = model.moduleIndex[ph.focus];
-        if (a === mNode || b === mNode) bright += ph.focusStrength * 1.1;
+        if (a === mNode || b === mNode) bright += ph.focusStrength * 0.7;
       }
 
       cA.copy(COL_THREAD).lerp(COL_BRIGHT, clamp01(bright - 0.6));

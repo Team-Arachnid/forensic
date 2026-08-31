@@ -5,8 +5,10 @@ import { CopyCommand } from "@/components/copy-command";
 import { Reveal } from "@/components/reveal";
 import { modules, type ModuleId } from "@/lib/site";
 
-function useActiveModule(ids: ModuleId[]): ModuleId {
-  const [active, setActive] = useState<ModuleId>(ids[0]);
+const MODULE_IDS = modules.map((m) => m.id);
+
+function useActiveModule(): ModuleId {
+  const [active, setActive] = useState<ModuleId>(MODULE_IDS[0]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -18,19 +20,18 @@ function useActiveModule(ids: ModuleId[]): ModuleId {
       },
       { rootMargin: "-45% 0px -45% 0px", threshold: [0, 0.25, 0.5, 1] },
     );
-    ids.forEach((id) => {
+    MODULE_IDS.forEach((id) => {
       const el = document.getElementById(id);
       if (el) observer.observe(el);
     });
     return () => observer.disconnect();
-  }, [ids]);
+  }, []);
 
   return active;
 }
 
 export function Modules() {
-  const ids = modules.map((m) => m.id);
-  const active = useActiveModule(ids);
+  const active = useActiveModule();
 
   return (
     <section
@@ -39,7 +40,7 @@ export function Modules() {
       className="relative py-24 md:py-32"
     >
       <div className="shell">
-        <div className="grid gap-12 lg:grid-cols-[280px_1fr] lg:gap-16">
+        <div className="grid gap-12 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-16">
           {/* Sticky index rail — the "pinned" focal navigation on desktop. */}
           <div className="lg:sticky lg:top-24 lg:h-fit lg:self-start">
             <p className="chapter-mark">CH.03&ndash;05 &mdash; The Suite</p>
@@ -50,8 +51,8 @@ export function Modules() {
               Three modules, one workflow.
             </h2>
             <p className="data mt-4 text-sm text-ink-muted">
-              acquire <span className="text-thread">&rarr;</span> extract{" "}
-              <span className="text-thread">&rarr;</span> destroy
+              acquire <span className="text-thread-bright">&rarr;</span> extract{" "}
+              <span className="text-thread-bright">&rarr;</span> destroy
             </p>
 
             <ol className="mt-8 hidden border-l border-line lg:block">
@@ -81,7 +82,7 @@ export function Modules() {
           </div>
 
           {/* Module panels */}
-          <div className="space-y-20 lg:space-y-28">
+          <div className="min-w-0 space-y-20 lg:space-y-28">
             {modules.map((m) => (
               <Reveal
                 as="section"
@@ -90,7 +91,7 @@ export function Modules() {
               >
                 <article id={m.id} className="scroll-mt-24">
                   <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
+                    <div className="min-w-0">
                       <p className="chapter-mark">
                         {m.index} &mdash; {m.name}
                       </p>
@@ -110,7 +111,7 @@ export function Modules() {
                     {m.capabilities.map((c, i) => (
                       <li key={c.label} className="border-t border-line pt-5">
                         <div className="flex gap-4">
-                          <span className="data mt-1 shrink-0 text-xs text-thread">
+                          <span className="data mt-1 shrink-0 text-xs text-thread-bright">
                             {String(i + 1).padStart(2, "0")}
                           </span>
                           <div>

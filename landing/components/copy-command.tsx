@@ -39,10 +39,10 @@ export function CopyCommand({ command, display, label }: CopyCommandProps) {
       ) : null}
 
       <div className="flex items-start justify-between gap-4 px-4 py-4 sm:px-5">
-        <pre className="data overflow-x-auto text-[0.82rem] leading-relaxed text-ink sm:text-sm">
+        <pre className="data min-w-0 flex-1 overflow-x-auto text-[0.82rem] leading-relaxed text-ink sm:text-sm">
           {lines.map((line, i) => (
             <div key={i} className="whitespace-pre">
-              <span className="mr-3 select-none text-thread" aria-hidden="true">
+              <span className="mr-3 select-none text-thread-bright" aria-hidden="true">
                 $
               </span>
               {line}

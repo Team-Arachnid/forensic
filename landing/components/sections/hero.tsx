@@ -11,7 +11,7 @@ export function Hero() {
       <div className="shell">
         <p className="eyebrow">
           Unified digital forensics
-          <span className="mx-2 text-thread">/</span>
+          <span className="mx-2 text-thread-bright">/</span>
           built in Rust
         </p>
 
@@ -53,15 +53,15 @@ export function Hero() {
 
         <dl className="mt-14 grid max-w-3xl grid-cols-1 gap-x-8 gap-y-4 border-t border-line pt-8 data text-xs text-ink-faint sm:grid-cols-3">
           <div>
-            <dt className="text-thread">Read-only by design</dt>
+            <dt className="text-thread-bright">Read-only by design</dt>
             <dd className="mt-1 text-ink-muted">Collectors never write to the target host.</dd>
           </div>
           <div>
-            <dt className="text-thread">Tamper-evident</dt>
+            <dt className="text-thread-bright">Tamper-evident</dt>
             <dd className="mt-1 text-ink-muted">Ed25519-signed, hash-chained custody log.</dd>
           </div>
           <div>
-            <dt className="text-thread">Standards-mapped</dt>
+            <dt className="text-thread-bright">Standards-mapped</dt>
             <dd className="mt-1 text-ink-muted">NIST 800-88 / DoD 5220.22-M erasure.</dd>
           </div>
         </dl>
