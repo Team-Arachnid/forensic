@@ -4,7 +4,6 @@ import "./globals.css";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
-import { BackgroundField } from "@/components/background-field";
 
 const mono = JetBrains_Mono({
   subsets: ["latin"],
@@ -105,7 +104,6 @@ export default function RootLayout({
           Skip to content
         </a>
         <SmoothScroll>
-          <BackgroundField />
           <SiteNav />
           <main id="main">{children}</main>
           <SiteFooter />
