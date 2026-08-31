@@ -21,3 +21,4 @@
 # Local editor and tooling state
 .vscode/
 .idea/
+temp/
