@@ -8,7 +8,7 @@ edition.workspace = true
 rust-version = "1.88"
 license.workspace = true
 repository.workspace = true
-authors.workspace = true
+authors = ["Divyanshu <divyanshukr0501@gmail.com>", "Arachnid Forensic"]
 
 [dependencies]
 anyhow.workspace = true
