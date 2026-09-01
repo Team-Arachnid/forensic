@@ -257,7 +257,12 @@ jobs:
           # Verify what we just produced, with the same public key the installers
           # and `self update` pin. A release that cannot verify against the
           # published key is worse than no release.
-          minisign -Vm dist/SHA256SUMS -P "${{ vars.MINISIGN_PUBKEY }}"
+          # build.rs already falls back to release/minisign.pub when the variable
+          # is unset; do the same here, so the committed key stays the one source
+          # of truth and an unset variable cannot fail a signed release.
+          pubkey="${{ vars.MINISIGN_PUBKEY }}"
+          [ -n "$pubkey" ] || pubkey="$(tail -n1 release/minisign.pub)"
+          minisign -Vm dist/SHA256SUMS -P "$pubkey"
 
       - name: Attach to the release
         env:
