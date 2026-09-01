@@ -41,7 +41,8 @@ use anyhow::{bail, Context, Result};
 /// hole wearing a convenience feature's clothes.
 pub const RELEASE_REPO: &str = "Team-Arachnid/forensic";
 
-const LATEST_RELEASE_API: &str = "https://api.github.com/repos/Team-Arachnid/forensic/releases/latest";
+const LATEST_RELEASE_API: &str =
+    "https://api.github.com/repos/Team-Arachnid/forensic/releases/latest";
 
 /// Hard cap on the launch-time check. Not a target — a limit.
 const CHECK_TIMEOUT: Duration = Duration::from_millis(500);
