@@ -13,12 +13,47 @@
 /*.pcap
 /*.pcapng
 *.raw
+*.dd
+*.e01
+*.E01
+*.dmp
+*.mem
+*.core
 
-# Operator signing keys
+# Anything an operator carries: signing keys, private keys, certificates and the
+# credentials a collector might be pointed at. A leaked signing key lets someone
+# publish a release as us; a leaked container key decrypts collected evidence.
 *.key
+*.pem
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.asc
+*.gpg
+*.pub.minisign
+minisign.key
+id_rsa*
+id_ed25519*
+.netrc
+credentials.json
 !deny.toml
+
+# Environment files. Committing one is the usual way a token escapes; the
+# .example variants carry names only and are meant to be read.
+.env
+.env.*
+!.env.example
+!.env.*.example
 
 # Local editor and tooling state
 .vscode/
 .idea/
+*.swp
 temp/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini

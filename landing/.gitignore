@@ -19,9 +19,14 @@ next-env.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# local env files
-.env*.local
+# local env files. .env and .env.production are as sensitive as .env.local:
+# NEXT_PUBLIC_ keys ship to the browser, everything else is a server secret.
+.env
+.env.*
+!.env.example
+!.env.*.example
 
 # vercel
 .vercel
