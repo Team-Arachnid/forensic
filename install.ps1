@@ -57,7 +57,7 @@ $Marker = '# added by arachnid-cli installer'
 # "checksum only" — a checksum fetched over the same channel as the artifact
 # proves the download was not corrupted and nothing at all about where it came
 # from. Rotating it is a release, not a patch; see release/README.md.
-$PubKey = if ($env:ARACHNID_PUBKEY) { $env:ARACHNID_PUBKEY } else { "RWT8KhRGhzRZ4gmiGJHOgKJOfZCY6dxDG/SIew+5RDH0LOkPXHFJENGh" }
+$PubKey = if ($env:ARACHNID_PUBKEY) { $env:ARACHNID_PUBKEY } else { "RWSvGZZEP1tY0aeMIt/DarqdRsWVk0xfu/F/byWafgIWTl1YHKpIyDJP" }
 
 function Write-Step { param([string]$m) Write-Host "==> $m" }
 function Write-Detail { param([string]$m) Write-Host "    $m" }
