@@ -6,7 +6,7 @@
 # host, and a project making that request should not also ask you to pipe an
 # unread script into a shell.
 #
-#   curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
+#   curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh -o install.sh
 #   sh install.sh
 #
 # Reading it first is encouraged but is your call, not a step you have to get
@@ -30,7 +30,7 @@
 
 set -eu
 
-REPO="ArachnidGs/forensic"
+REPO="Team-Arachnid/forensic"
 BIN="arachnid-cli"
 MARKER="# added by arachnid-cli installer"
 

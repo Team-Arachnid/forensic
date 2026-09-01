@@ -133,7 +133,7 @@ fn collect() -> Vec<Check> {
             "release key",
             "not embedded — this is a development build",
             "`self update` is disabled. Install a signed release from\n\
-             https://github.com/ArachnidGs/forensic/releases",
+             https://github.com/Team-Arachnid/forensic/releases",
         ),
     });
     out.push(Check::pass(

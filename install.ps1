@@ -8,7 +8,7 @@
     host, and a project making that request should not also ask you to pipe an
     unread script into a shell.
 
-        irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
+        irm https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.ps1 -OutFile install.ps1
         .\install.ps1
 
     Reading it first is encouraged but is your call, not a step you have to get
@@ -46,7 +46,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$Repo   = 'ArachnidGs/forensic'
+$Repo   = 'Team-Arachnid/forensic'
 $Bin    = 'arachnid-cli'
 $Marker = '# added by arachnid-cli installer'
 

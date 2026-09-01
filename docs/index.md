@@ -66,13 +66,13 @@ decision and a separate habit — `--dry-run` first, every time.
 
 ```bash
 # macOS, Linux
-curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh -o install.sh
 sh install.sh
 ```
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.ps1 -OutFile install.ps1
 .\install.ps1
 ```
 
@@ -99,8 +99,8 @@ container format, so the whole chain verifies with `arachnid-core verify`.
 
 ## Elsewhere
 
-- [Repository](https://github.com/ArachnidGs/forensic) — source, issues, releases
-- [GitHub wiki](https://github.com/ArachnidGs/forensic/wiki) — the same pages, rendered by GitHub
+- [Repository](https://github.com/Team-Arachnid/forensic) — source, issues, releases
+- [GitHub wiki](https://github.com/Team-Arachnid/forensic/wiki) — the same pages, rendered by GitHub
 - [SOC allowlisting](SOC-ALLOWLISTING.html) — full behavioural disclosure for detection engineering
 
 Licensed MIT. Version documented: **0.1.0**.

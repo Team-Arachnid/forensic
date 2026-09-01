@@ -47,7 +47,7 @@ TUI), and Arachnid Sanitize (`arachnid-sanitize`, plus screen 7).
 ### The short version
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh -o install.sh
 sh install.sh
 ```
 
@@ -74,7 +74,7 @@ can also `git log`.
 Swap `main` for a tag to pin a fixed version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/v0.1.0/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/v0.1.0/install.sh -o install.sh
 ```
 
 ### 1. Download, then run (recommended)
@@ -82,14 +82,14 @@ curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/v0.1.0/install.
 **macOS and Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh -o install.sh
 sh install.sh
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.ps1 -OutFile install.ps1
 .\install.ps1
 ```
 
@@ -101,11 +101,11 @@ down a pipe.
 ### 2. One line (straight into the shell, nothing to read)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh | sh          # macOS, Linux
+curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh | sh          # macOS, Linux
 ```
 
 ```powershell
-irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 | iex               # Windows
+irm https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.ps1 | iex               # Windows
 ```
 
 Identical behaviour, with one exception: a piped install has no terminal to
@@ -117,7 +117,7 @@ the command instead.
 For anyone who would rather build it than download it:
 
 ```bash
-git clone https://github.com/ArachnidGs/forensic.git
+git clone https://github.com/Team-Arachnid/forensic.git
 cd forensic
 cargo install --path crates/arachnid-cli
 ```

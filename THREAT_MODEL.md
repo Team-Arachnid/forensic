@@ -38,7 +38,7 @@ Four requests, all HTTPS, all to hosts you can pin:
 
 | Request | To | Why |
 |---|---|---|
-| `GET /repos/ArachnidGs/forensic/releases/latest` | `api.github.com` | resolve the newest tag. Skipped entirely if you pass an explicit version |
+| `GET /repos/Team-Arachnid/forensic/releases/latest` | `api.github.com` | resolve the newest tag. Skipped entirely if you pass an explicit version |
 | `GET /releases/download/<tag>/arachnid-cli-<target>` | `github.com` | the binary |
 | `GET /releases/download/<tag>/SHA256SUMS` | `github.com` | digests for every artifact in the release |
 | `GET /releases/download/<tag>/SHA256SUMS.minisig` | `github.com` | the detached signature over that file |
@@ -70,14 +70,14 @@ and nothing whatsoever about who produced it. If `minisign` is missing, the
 installer stops and tells you how to install it, or how to verify by hand.
 
 The pin is reviewable because the installers **are** this repository's files:
-`raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh` serves
+`raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh` serves
 `install.sh` from `main`. There is no separate download host that could serve
 something else, and no CDN cache between the two — the bytes you fetch are the
 bytes in the commit, and `git log install.sh` is the audit trail for the key
 pin.
 
 Pin a tag rather than `main` if your policy requires a fixed artifact:
-`raw.githubusercontent.com/ArachnidGs/forensic/v0.1.0/install.sh`.
+`raw.githubusercontent.com/Team-Arachnid/forensic/v0.1.0/install.sh`.
 
 ### Current status
 
@@ -136,7 +136,7 @@ to, so it is specified rather than described.
 
 ### What it does
 
-One `GET https://api.github.com/repos/ArachnidGs/forensic/releases/latest`. If
+One `GET https://api.github.com/repos/Team-Arachnid/forensic/releases/latest`. If
 the tag is newer than the running version, one line to **stderr**:
 
 ```
@@ -233,7 +233,7 @@ Before allowlisting this in a managed environment:
    There is no `--force` and no `--skip-verify`; if a fork has added one, that
    is your answer.
 3. **The network surface.** `strings` on the binary shows exactly one outbound
-   URL, `api.github.com/repos/ArachnidGs/forensic/releases/latest`. Anything
+   URL, `api.github.com/repos/Team-Arachnid/forensic/releases/latest`. Anything
    else in a build claiming to be this one is not.
 4. **The disable path works.** Set `ARACHNID_NO_UPDATE_CHECK=1`, run
    `arachnid-cli doctor`, and confirm it reports the check as disabled.

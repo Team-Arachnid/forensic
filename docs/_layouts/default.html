@@ -21,8 +21,8 @@
     <span class="brand-name">Arachnid <span class="brand-thin">Forensic</span></span>
   </a>
   <nav class="topbar-links">
-    <a href="https://github.com/ArachnidGs/forensic">Repository</a>
-    <a href="https://github.com/ArachnidGs/forensic/wiki">Wiki</a>
+    <a href="https://github.com/Team-Arachnid/forensic">Repository</a>
+    <a href="https://github.com/Team-Arachnid/forensic/wiki">Wiki</a>
   </nav>
   <button class="menu" aria-expanded="false" aria-controls="sidebar">Menu</button>
 </header>
@@ -45,7 +45,7 @@
         page.path is relative to the site source (docs/), so the repo path needs
         the prefix back on or every edit link 404s.
       {%- endcomment -%}
-      <a href="https://github.com/ArachnidGs/forensic/edit/main/docs/{{ page.path }}">Edit this page</a>
+      <a href="https://github.com/Team-Arachnid/forensic/edit/main/docs/{{ page.path }}">Edit this page</a>
       <span>·</span>
       <span>Authorized DFIR use only</span>
     </footer>
@@ -59,7 +59,7 @@
 // and 404. Point them at the repo instead. Nothing else depends on this — with
 // JS off the links are exactly as broken as they would have been anyway.
 (function () {
-  var blob = 'https://github.com/ArachnidGs/forensic/blob/main/';
+  var blob = 'https://github.com/Team-Arachnid/forensic/blob/main/';
   document.querySelectorAll('a[href^="../../"]').forEach(function (a) {
     a.href = blob + a.getAttribute('href').replace(/^(\.\.\/)+/, '');
   });

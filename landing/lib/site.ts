@@ -1,18 +1,18 @@
 /** Canonical external links and product data — single source for the whole site. */
 
 export const links = {
-  repo: "https://github.com/ArachnidGs/forensic",
-  wiki: "https://github.com/ArachnidGs/forensic/wiki",
-  docs: "https://arachnidgs.github.io/forensic/",
-  license: "https://github.com/ArachnidGs/forensic/blob/main/LICENSE",
+  repo: "https://github.com/Team-Arachnid/forensic",
+  wiki: "https://github.com/Team-Arachnid/forensic/wiki",
+  docs: "https://team-arachnid.github.io/forensic/",
+  license: "https://github.com/Team-Arachnid/forensic/blob/main/LICENSE",
   threatModel:
-    "https://github.com/ArachnidGs/forensic/blob/main/THREAT_MODEL.md",
+    "https://github.com/Team-Arachnid/forensic/blob/main/THREAT_MODEL.md",
 } as const;
 
 export const install = {
-  unix: `curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
+  unix: `curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh -o install.sh
 sh install.sh`,
-  windows: `irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
+  windows: `irm https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.ps1 -OutFile install.ps1
 .\\install.ps1`,
 } as const;
 

@@ -39,9 +39,9 @@ use anyhow::{bail, Context, Result};
 /// Where releases live. A constant, not configurable: an updater that can be
 /// pointed at an arbitrary host by an environment variable is a supply-chain
 /// hole wearing a convenience feature's clothes.
-pub const RELEASE_REPO: &str = "ArachnidGs/forensic";
+pub const RELEASE_REPO: &str = "Team-Arachnid/forensic";
 
-const LATEST_RELEASE_API: &str = "https://api.github.com/repos/ArachnidGs/forensic/releases/latest";
+const LATEST_RELEASE_API: &str = "https://api.github.com/repos/Team-Arachnid/forensic/releases/latest";
 
 /// Hard cap on the launch-time check. Not a target — a limit.
 const CHECK_TIMEOUT: Duration = Duration::from_millis(500);

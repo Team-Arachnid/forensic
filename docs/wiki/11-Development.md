@@ -348,7 +348,7 @@ a broken install for most Linux users. The job runs `dash -n`, `bash -n` and
 `shellcheck --shell=sh`, and parses `install.ps1` with the PowerShell parser.
 
 **Documentation publishes two different ways, and only one is automatic by
-itself.** The Pages site at `arachnidgs.github.io/forensic` is built by GitHub
+itself.** The Pages site at `team-arachnid.github.io/forensic` is built by GitHub
 from `main` + `/docs`, so it updates on merge with no job involved. The **wiki
 is a separate git repository** (`<repo>.wiki.git`) that nothing merges into —
 `scripts/publish-wiki.sh` pushes to it, and the `publish wiki` job is what runs

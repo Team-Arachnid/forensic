@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-REPO="${REPO:-ArachnidGs/forensic}"
+REPO="${REPO:-Team-Arachnid/forensic}"
 BRANCH="${BRANCH:-main}"
 SRC="${SRC:-$(cd "$(dirname "$0")/.." && pwd)/docs/wiki}"
 BLOB="https://github.com/$REPO/blob/$BRANCH"

@@ -330,7 +330,7 @@ request anywhere in the suite, so here is the whole of it.
 
 | | |
 |---|---|
-| Request | `GET https://api.github.com/repos/ArachnidGs/forensic/releases/latest` |
+| Request | `GET https://api.github.com/repos/Team-Arachnid/forensic/releases/latest` |
 | Sends | the URL and `User-Agent: arachnid-cli/<version>`. Nothing else |
 | When | on launch, **only if stderr is a terminal**, at most once per 24 hours |
 | Timeout | 500 ms, hard |

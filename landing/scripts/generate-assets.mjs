@@ -148,7 +148,7 @@ async function ogImage() {
   <text x="472" y="490" fill="#8d8c92" font-family="Segoe UI, Arial, sans-serif" font-size="27">Live triage · File recovery · Certified erasure —</text>
   <text x="472" y="528" fill="#8d8c92" font-family="Segoe UI, Arial, sans-serif" font-size="27">one signed chain of custody, built in Rust.</text>
 
-  <text x="472" y="582" fill="#5a5a61" font-family="Consolas, monospace" font-size="21">github.com/ArachnidGs/forensic</text>
+  <text x="472" y="582" fill="#5a5a61" font-family="Consolas, monospace" font-size="21">github.com/Team-Arachnid/forensic</text>
 </svg>`;
 
   const mark = await sharp(path.join(media, "logo.png"))

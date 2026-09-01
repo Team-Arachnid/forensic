@@ -31,13 +31,13 @@
 
 ```bash
 # macOS, Linux
-curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh -o install.sh
 sh install.sh
 ```
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.ps1 -OutFile install.ps1
 .\install.ps1
 ```
 
@@ -50,7 +50,7 @@ allowlist a forensic binary should not also ask you to pipe an unread script
 into a shell. There is no separate download host: the URL serves the script out
 of this repository's `main` branch, so what you run and what you can review are
 the same file with the same history. Swap `main` for a tag —
-`…/ArachnidGs/forensic/v0.1.0/install.sh` — to pin a version.
+`…/Team-Arachnid/forensic/v0.1.0/install.sh` — to pin a version.
 
 The installer verifies a signature over the digest file, then the digest of the
 binary, and aborts on either failure having installed nothing. It installs to a
@@ -102,7 +102,7 @@ sudo pacman -S libpcap                # Arch
 ## Development build
 
 ```bash
-git clone https://github.com/ArachnidGs/forensic.git
+git clone https://github.com/Team-Arachnid/forensic.git
 cd forensic
 cargo build --release
 cargo test --workspace

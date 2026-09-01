@@ -26,7 +26,7 @@ arachnid-tui                                          # the same engine, driven 
 One command covers all of it, and one line installs it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh -o install.sh
 sh install.sh
 ```
 
@@ -122,13 +122,13 @@ code loading, self-persistence, packet injection or interception.
 
 ```bash
 # macOS, Linux
-curl -fsSL https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh -o install.sh
 sh install.sh
 ```
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/ArachnidGs/forensic/main/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/Team-Arachnid/forensic/main/install.ps1 -OutFile install.ps1
 .\install.ps1
 ```
 
@@ -143,7 +143,7 @@ The URL is the file: it serves `install.sh` straight out of this repository's
 `main` branch, so the script you run and the script you can review
 [here](install.sh) are the same object, with the same history. Pin a tag instead
 of `main` if you want a fixed version:
-`…/ArachnidGs/forensic/v0.1.0/install.sh`.
+`…/Team-Arachnid/forensic/v0.1.0/install.sh`.
 
 The installer verifies a **signature over the digest file, then the digest of
 the binary**, and aborts on either failure having installed nothing. It never

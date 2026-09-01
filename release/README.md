@@ -21,7 +21,7 @@ SHA256SUMS.minisig  ──verifies──►  SHA256SUMS
 
 Everything reduces to one question: **is the key pinned in the installer the
 project's real key?** The installers are served straight from this repository —
-`raw.githubusercontent.com/ArachnidGs/forensic/main/install.sh` — so there is no
+`raw.githubusercontent.com/Team-Arachnid/forensic/main/install.sh` — so there is no
 separate download host that could serve a different pin, and `git log install.sh`
 is the audit trail for every change to it.
 

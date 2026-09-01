@@ -8,7 +8,7 @@
 title: Arachnid Forensic
 description: Live triage, network forensics and secure erasure for authorized DFIR use.
 baseurl: /forensic
-url: https://arachnidgs.github.io
+url: https://team-arachnid.github.io
 
 # jekyll-relative-links rewrites [x](02-Concepts.md) to the built page, which is
 # what lets the same link work in the repo, on the wiki and here.
