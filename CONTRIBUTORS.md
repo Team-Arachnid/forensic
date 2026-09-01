@@ -1,6 +1,6 @@
 # Contributors
 
-Arachnid Core is built and maintained by the ArachnidGs team.
+Arachnid Core is built and maintained by the Arachnid team.
 
 | Contributor | GitHub | Area |
 | --- | --- | --- |
