@@ -207,7 +207,12 @@ jobs:
             exit 1
           fi
           sudo apt-get update && sudo apt-get install -y minisign
-          printf '%s\n' "$MINISIGN_SECRET_KEY" > minisign.key
+
+          # A key generated on Windows arrives with CRLF endings, and the CR rides
+          # along into the secret. minisign then fails to decode the key's second
+          # line with "base64 conversion failed", which reads like a corrupt secret
+          # rather than a line ending.
+          printf '%s\n' "$MINISIGN_SECRET_KEY" | tr -d '\r' > minisign.key
 
           # Trailing whitespace is the classic way this secret goes wrong:
           # `gh secret set` keeps whatever reached its stdin, so a stray newline
