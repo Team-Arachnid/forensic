@@ -160,8 +160,12 @@ Nothing has been installed. Do not run the downloaded file; report this.
 function Set-ProfilePath {
     param([string]$Dir)
 
-    $current = $env:Path -split ';'
-    if ($current -contains $Dir) {
+    # The session's $env:Path is not the question: it can carry $Dir from a
+    # profile line that has since been deleted, which is exactly how a machine
+    # ends up with the binary installed and the command not found. Ask what
+    # persists across a new shell instead.
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User') -split ';'
+    if ($userPath -contains $Dir) {
         return "$Dir was already on PATH; nothing was changed."
     }
 
@@ -272,7 +276,11 @@ if (Test-Path $exePath) {
     try { $current = (& $exePath version | Select-Object -First 1).Split(' ')[1] } catch { }
     if ($current -eq $plain) {
         Write-Step "$Bin $plain is already installed at $exePath"
-        Write-Detail "Nothing to do. Run '$Bin doctor' to check the installation."
+        # Still wire up PATH: "installed" and "runnable by name" are separate
+        # states, and an installer that skips this reports success at a machine
+        # where the command is not found.
+        Write-Detail "PATH:      $(Set-ProfilePath -Dir $InstallDir)"
+        Write-Detail "Nothing else to do. Run '$Bin doctor' to check the installation."
         exit 0
     }
     if ($current) { Write-Detail "upgrading: $current -> $plain" }
