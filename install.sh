@@ -386,7 +386,13 @@ if [ -x "$EXISTING" ]; then
     current="$("$EXISTING" version 2>/dev/null | head -n1 | awk '{print $2}')" || current=""
     if [ "$current" = "$VERSION" ]; then
         step "$BIN $VERSION is already installed at $EXISTING"
-        say  "    Nothing to do. Run '$BIN doctor' to check the installation."
+        # Still wire up PATH: "installed" and "runnable by name" are separate
+        # states, and an installer that skips this reports success at a machine
+        # where the command is not found.
+        PATH_NOTE=""
+        setup_path
+        say  "    PATH:      $PATH_NOTE"
+        say  "    Nothing else to do. Run '$BIN doctor' to check the installation."
         exit 0
     fi
     [ -n "$current" ] && say "    upgrading: $current -> $VERSION"
