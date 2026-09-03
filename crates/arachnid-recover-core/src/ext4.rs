@@ -757,6 +757,7 @@ fn assemble(
         accessed_utc: unix_to_rfc3339(inode.atime as i64, 0),
         deleted,
         encrypted,
+        artifact: None,
         rationale: Rationale {
             confidence,
             summary,

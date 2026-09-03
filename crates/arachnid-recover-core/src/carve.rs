@@ -44,7 +44,7 @@ const MIN_TEXT: usize = 512;
 const MAX_TEXT: u64 = 1024 * 1024;
 
 /// How a file type's end is found.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 enum Terminator {
     /// Search forward for a byte sequence; the file ends after it.
     Footer(&'static [u8]),
@@ -52,6 +52,13 @@ enum Terminator {
     Mp4Boxes,
     /// Find the ZIP end-of-central-directory record.
     ZipEocd,
+    /// The file's own header states how long it is. Exact where the header is
+    /// intact, and reported as a cap where it is not — the second field names
+    /// the field that was unusable, so the result can say which.
+    Declared(
+        fn(&mut dyn Source, u64, u64) -> Result<Option<u64>>,
+        &'static str,
+    ),
     /// Run of printable bytes.
     PrintableRun,
 }
@@ -110,6 +117,27 @@ const SIGNATURES: &[Signature] = &[
         header_at: 4,
         terminator: Terminator::Mp4Boxes,
         max_size: 4 * 1024 * 1024 * 1024,
+    },
+    Signature {
+        name: "sqlite",
+        header: b"SQLite format 3\0",
+        header_at: 0,
+        terminator: Terminator::Declared(sqlite_length, "the SQLite header's page count"),
+        max_size: 256 * 1024 * 1024,
+    },
+    Signature {
+        name: "evtx",
+        header: b"ElfFile\0",
+        header_at: 0,
+        terminator: Terminator::Declared(evtx_length, "the EVTX header's chunk count"),
+        max_size: 1024 * 1024 * 1024,
+    },
+    Signature {
+        name: "journal",
+        header: b"LPKSHHRH",
+        header_at: 0,
+        terminator: Terminator::Declared(journal_length, "the journal header's arena size"),
+        max_size: 1024 * 1024 * 1024,
     },
     Signature {
         name: "txt",
@@ -194,7 +222,6 @@ pub fn carve(
         // Each chunk re-reads MAX_HEADER bytes of the previous one so a
         // signature straddling the boundary is still matched.
         let read_from = base.saturating_sub(MAX_HEADER as u64);
-        let lead = (base - read_from) as usize;
         let n = source.read_at(read_from, &mut buf)?;
         if n == 0 {
             break;
@@ -202,7 +229,7 @@ pub fn carve(
         let window = &buf[..n];
 
         for sig in &wanted {
-            if sig.terminator == Terminator::PrintableRun {
+            if matches!(sig.terminator, Terminator::PrintableRun) {
                 continue;
             }
             let mut i = 0usize;
@@ -218,9 +245,11 @@ pub fn carve(
                 let start = read_from + start_window as u64;
                 i = at_window + 1;
 
-                // Only act on hits that begin inside this chunk proper; the
-                // overlap belongs to the previous one and was handled there.
-                if start < base {
+                // The previous chunk's window ended exactly at `base`, so it
+                // saw — and handled — every header that ends at or before it. A
+                // header straddling the boundary was in neither window in full
+                // and is this chunk's to claim.
+                if start + (sig.header_at + sig.header.len()) as u64 <= base {
                     continue;
                 }
                 if is_claimed(&claimed, start) {
@@ -236,14 +265,13 @@ pub fn carve(
 
         if wanted
             .iter()
-            .any(|s| s.terminator == Terminator::PrintableRun)
+            .any(|s| matches!(s.terminator, Terminator::PrintableRun))
         {
             carve_text(window, read_from, base, &claimed, &mut out, progress);
         }
 
         base += CHUNK as u64;
         progress.bytes_scanned.store(base.min(size), Relaxed);
-        let _ = lead;
     }
 
     progress.bytes_scanned.store(size, Relaxed);
@@ -295,6 +323,17 @@ fn carve_one(
                 Some("no ZIP end-of-central-directory record found; the archive is truncated or fragmented".into()),
             ),
         },
+        Terminator::Declared(length_of, what) => match length_of(source, start, budget)? {
+            Some(len) => (len, true, None),
+            None => (
+                budget,
+                false,
+                Some(format!(
+                    "{what} is missing or implausible, so the length below is the type's cap \
+                     rather than the file's end"
+                )),
+            ),
+        },
         Terminator::PrintableRun => return Ok(None),
     };
 
@@ -313,6 +352,20 @@ fn carve_one(
         }
     }
 
+    // A carved file has no name, so the only thing that can say what it holds is
+    // the file itself: a SQLite database states its schema on page one, and the
+    // two binary log formats are already identified by the signature matched
+    // above.
+    let artifact = if sig.name == "sqlite" {
+        // ponytail: page one only. A schema whose CREATE statements spill onto
+        // overflow pages is not followed; walk the page chain if a real database
+        // ever hides its table names past the first page.
+        let head = source.read_exact_at(start, length.min(64 * 1024) as usize)?;
+        crate::artifacts::from_content(&head)
+    } else {
+        crate::artifacts::from_type(sig.name)
+    };
+
     let index = existing.len();
     let mut checks = vec![
         Check::pass(
@@ -325,7 +378,7 @@ fn carve_one(
         if footer_found {
             Check::pass(
                 "footer_found",
-                format!("the format's own terminator was found {length} bytes in"),
+                format!("the format's own structure bounds the file at {length} bytes"),
             )
         } else {
             Check::fail(
@@ -362,9 +415,8 @@ fn carve_one(
 
     let summary = if footer_found {
         format!(
-            "raw-carved {file_type}: header and the format's own terminator both present, so the \
-             extent is structurally bounded — but completeness is unverified and no original \
-             metadata exists"
+            "raw-carved {file_type}: the header is present and the format itself bounds the \
+             extent — but completeness is unverified and no original metadata exists"
         )
     } else {
         format!(
@@ -373,7 +425,7 @@ fn carve_one(
         )
     };
 
-    Ok(Some(RecoveredFile {
+    let mut file = RecoveredFile {
         id: format!("carve-{index:06}"),
         method: Method::SignatureCarve,
         // Deliberately None. A carved file has no original path and must never
@@ -393,12 +445,103 @@ fn carve_one(
         // Whether it was ever deleted is not knowable from its bytes.
         deleted: false,
         encrypted: None,
+        artifact: None,
         rationale: Rationale {
             confidence: Confidence::Low,
             summary,
             checks,
         },
-    }))
+    };
+    if let Some(m) = artifact {
+        m.apply(&mut file);
+    }
+    Ok(Some(file))
+}
+
+/// Read a SQLite database's length out of its own header.
+///
+/// The header states the page size and the size of the database in pages, which
+/// multiply to an exact length — but the page count is only trustworthy when the
+/// version-valid-for number matches the file change counter. SQLite's own rule,
+/// and it is checked rather than assumed: a stale count would carve a database
+/// short or long, and either produces a file that opens and lies.
+fn sqlite_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::{u16be, u32be};
+
+    if budget < 100 {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, 100)?;
+    // A page size of 1 means 65536, which does not fit the 16-bit field.
+    let page_size = match u16be(&head, 16) {
+        Some(1) => 65536u64,
+        Some(n) => n as u64,
+        None => return Ok(None),
+    };
+    if page_size < 512 || !page_size.is_power_of_two() {
+        return Ok(None);
+    }
+    let (Some(change), Some(pages), Some(valid_for)) =
+        (u32be(&head, 24), u32be(&head, 28), u32be(&head, 92))
+    else {
+        return Ok(None);
+    };
+    if pages == 0 || valid_for != change {
+        return Ok(None);
+    }
+    let length = page_size * pages as u64;
+    Ok((length <= budget).then_some(length))
+}
+
+/// Read a Windows event log's length out of its own header.
+///
+/// An EVTX file is a 4096-byte header followed by a whole number of 64 KiB
+/// chunks, and the header counts them. The block size is checked too: it is
+/// fixed at 4096 in every version of the format, so a header that says otherwise
+/// is damage rather than a variant.
+fn evtx_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::u16le;
+
+    const HEADER: u64 = 4096;
+    const CHUNK_SIZE: u64 = 64 * 1024;
+
+    if budget < HEADER {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, 48)?;
+    let (Some(block), Some(chunks)) = (u16le(&head, 40), u16le(&head, 42)) else {
+        return Ok(None);
+    };
+    if block as u64 != HEADER || chunks == 0 {
+        return Ok(None);
+    }
+    let length = HEADER + chunks as u64 * CHUNK_SIZE;
+    Ok((length <= budget).then_some(length))
+}
+
+/// Read a systemd journal file's length out of its own header.
+///
+/// The header carries its own size and the size of the arena that follows it,
+/// and the file is exactly the two together.
+fn journal_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::u64le;
+
+    if budget < 104 {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, 104)?;
+    let (Some(header_size), Some(arena_size)) = (u64le(&head, 88), u64le(&head, 96)) else {
+        return Ok(None);
+    };
+    // The header has grown across systemd versions but has never left this
+    // range, and an arena of nothing is not a journal.
+    if !(240..=4096).contains(&header_size) || arena_size == 0 {
+        return Ok(None);
+    }
+    let Some(length) = header_size.checked_add(arena_size) else {
+        return Ok(None);
+    };
+    Ok((length <= budget).then_some(length))
 }
 
 /// Stream forward from `start` looking for `footer`, returning the length of the
@@ -527,7 +670,7 @@ fn carve_text(
                     && !is_claimed(claimed, start)
                 {
                     let index = out.len();
-                    out.push(text_result(index, start, len as u64));
+                    out.push(text_result(index, start, len as u64, &window[s..i]));
                     progress
                         .files_found
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -539,8 +682,8 @@ fn carve_text(
     }
 }
 
-fn text_result(index: usize, start: u64, length: u64) -> RecoveredFile {
-    RecoveredFile {
+fn text_result(index: usize, start: u64, length: u64, run: &[u8]) -> RecoveredFile {
+    let mut file = RecoveredFile {
         id: format!("carve-{index:06}"),
         method: Method::SignatureCarve,
         original_path: None,
@@ -556,6 +699,7 @@ fn text_result(index: usize, start: u64, length: u64) -> RecoveredFile {
         accessed_utc: None,
         deleted: false,
         encrypted: None,
+        artifact: None,
         rationale: Rationale {
             confidence: Confidence::Low,
             summary: format!(
@@ -579,7 +723,11 @@ fn text_result(index: usize, start: u64, length: u64) -> RecoveredFile {
                 ),
             ],
         },
+    };
+    if let Some(m) = crate::artifacts::from_text(run) {
+        m.apply(&mut file);
     }
+    file
 }
 
 /// Naive substring search. O(n·m) worst case, and the right choice here: the
@@ -587,11 +735,29 @@ fn text_result(index: usize, start: u64, length: u64) -> RecoveredFile {
 /// more than it saves on a haystack read straight off a disk.
 // ponytail: naive search, switch to memchr-style skipping if profiling ever
 // shows the scan is CPU-bound rather than I/O-bound.
-fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+pub(crate) fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
     haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// A minimal but structurally honest SQLite database: the header fields the
+/// carver reads, and a schema page carrying the `CREATE` statements a real file
+/// keeps there.
+#[cfg(test)]
+pub(crate) fn test_sqlite_db(pages: u32, schema: &[u8]) -> Vec<u8> {
+    const PAGE: usize = 512;
+    let mut db = vec![0u8; PAGE * pages as usize];
+    db[..16].copy_from_slice(b"SQLite format 3\0");
+    db[16..18].copy_from_slice(&(PAGE as u16).to_be_bytes());
+    // The change counter and the version-valid-for number have to agree, or the
+    // page count is stale and must not be used.
+    db[24..28].copy_from_slice(&7u32.to_be_bytes());
+    db[28..32].copy_from_slice(&pages.to_be_bytes());
+    db[92..96].copy_from_slice(&7u32.to_be_bytes());
+    db[100..100 + schema.len()].copy_from_slice(schema);
+    db
 }
 
 #[cfg(test)]
@@ -753,6 +919,121 @@ mod tests {
         img.extend([0xFF, 0xD9]);
         assert!(carve_all(img.clone(), &["png"]).is_empty());
         assert_eq!(carve_all(img, &["jpg"]).len(), 1);
+    }
+
+    /// The page count in the header is what stops the carve at the end of the
+    /// database instead of running on into whatever followed it on disk.
+    #[test]
+    fn a_database_is_bounded_by_its_page_count_and_named_by_its_schema() {
+        let db = test_sqlite_db(
+            4,
+            b"CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url TEXT)",
+        );
+        let len = db.len();
+        let mut img = vec![0u8; 1024];
+        img.extend_from_slice(&db);
+        img.extend(std::iter::repeat_n(0xCCu8, 4096));
+
+        let found = carve_all(img, &["sqlite"]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].extents[0].offset, 1024);
+        assert_eq!(found[0].size, len as u64);
+        assert_eq!(found[0].file_type, "sqlite");
+        // A carved database has no name, so the schema is the only thing that
+        // can say what it holds.
+        assert_eq!(found[0].artifact.as_deref(), Some("browser-history"));
+        assert!(found[0]
+            .rationale
+            .checks
+            .iter()
+            .any(|c| c.check == "artifact_identified"));
+    }
+
+    /// A stale page count is SQLite's own signal not to trust it. The database
+    /// is still evidence, so it is recovered and the doubt is recorded.
+    #[test]
+    fn a_database_with_an_unusable_page_count_is_kept_and_flagged() {
+        let mut db = test_sqlite_db(4, b"CREATE TABLE t(x)");
+        db[92..96].copy_from_slice(&9u32.to_be_bytes());
+
+        let found = carve_all(db, &["sqlite"]);
+        assert_eq!(found.len(), 1, "an unusable count must not lose the file");
+        let bound = found[0]
+            .rationale
+            .checks
+            .iter()
+            .find(|c| c.check == "footer_found")
+            .unwrap();
+        assert!(!bound.passed);
+        assert!(found[0].rationale.summary.contains("likely incomplete"));
+    }
+
+    #[test]
+    fn an_event_log_is_bounded_by_its_chunk_count() {
+        let mut evtx = vec![0u8; 4096 + 64 * 1024];
+        evtx[..8].copy_from_slice(b"ElfFile\0");
+        evtx[40..42].copy_from_slice(&4096u16.to_le_bytes());
+        evtx[42..44].copy_from_slice(&1u16.to_le_bytes());
+        let len = evtx.len();
+        evtx.extend(std::iter::repeat_n(0xCCu8, 2048));
+
+        let found = carve_all(evtx, &["evtx"]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].size, len as u64);
+        assert_eq!(found[0].artifact.as_deref(), Some("system-log"));
+    }
+
+    #[test]
+    fn a_journal_file_is_bounded_by_its_header_and_arena() {
+        let (header_size, arena_size) = (240u64, 4096u64);
+        let mut journal = vec![0u8; (header_size + arena_size) as usize];
+        journal[..8].copy_from_slice(b"LPKSHHRH");
+        journal[88..96].copy_from_slice(&header_size.to_le_bytes());
+        journal[96..104].copy_from_slice(&arena_size.to_le_bytes());
+        let len = journal.len();
+        journal.extend(std::iter::repeat_n(0xCCu8, 512));
+
+        let found = carve_all(journal, &["journal"]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].size, len as u64);
+        assert_eq!(found[0].artifact.as_deref(), Some("system-log"));
+    }
+
+    /// A deleted `/var/log` file has no name left to read, so the only thing
+    /// that can identify the block is the shape of the lines in it.
+    #[test]
+    fn a_carved_log_fragment_is_labelled_a_system_log() {
+        let mut img = vec![0u8; 100];
+        let mut text = Vec::new();
+        while text.len() < MIN_TEXT + 10 {
+            text.extend_from_slice(b"Aug 29 14:03:11 web01 sshd[1201]: Accepted publickey\n");
+        }
+        img.extend_from_slice(&text);
+        img.extend(std::iter::repeat_n(0u8, 100));
+
+        let found = carve_all(img, &["txt"]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].artifact.as_deref(), Some("system-log"));
+    }
+
+    /// Each chunk's window ends where the next one begins, so a header lying
+    /// across that line is in neither window in full. It belongs to the chunk
+    /// that can still read it forward, and used to be dropped by both.
+    #[test]
+    fn a_signature_across_a_chunk_boundary_is_still_carved() {
+        let at = 2 * CHUNK - 3;
+        let mut img = vec![0u8; at];
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        png.extend(std::iter::repeat_n(0x00, 40));
+        png.extend([b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82]);
+        let len = png.len();
+        img.extend_from_slice(&png);
+        img.extend(std::iter::repeat_n(0xCCu8, 1000));
+
+        let found = carve_all(img, &["png"]);
+        assert_eq!(found.len(), 1, "the header spanned a chunk boundary");
+        assert_eq!(found[0].extents[0].offset, at as u64);
+        assert_eq!(found[0].size, len as u64);
     }
 
     /// Every carved result is Low, whatever else is true of it. The label is the

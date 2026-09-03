@@ -538,13 +538,16 @@ without identity, and is never presented as though it recovered more.
 ### Carved file types
 
 `jpg` · `png` · `pdf` · `zip` (recognised as `docx` / `xlsx` / `pptx` from the
-member layout) · `mp4` · `txt`
+member layout) · `mp4` · `sqlite` · `evtx` · `journal` · `txt`
 
 Where the format has its own terminator, the end of the file is found
 structurally rather than guessed: JPEG's `FFD9`, PNG's `IEND`, PDF's `%%EOF`,
 ZIP's end-of-central-directory record, and MP4 by walking the box chain and
-summing the declared box lengths. Where it does not — plain text — the result
-says so, and its length is a bound rather than a claim.
+summing the declared box lengths. Three formats state their own length instead,
+and it is read rather than searched for: a SQLite database's page size and page
+count, an EVTX header's chunk count, a systemd journal's header and arena sizes.
+Where there is neither — plain text — the result says so, and its length is a
+bound rather than a claim.
 
 `txt` is off by default. On a real volume it matches every log fragment and
 string table on the disk and buries everything else.
@@ -555,6 +558,36 @@ and flagged likely-incomplete. This build does **not** attempt to reassemble a
 fragmented file from non-adjacent runs: bi-fragment gap carving and its
 relatives guess, and in evidence a plausible-looking wrong reconstruction is
 worse than an honest partial one.
+
+### Call logs, browser history and system logs
+
+Recovery hands back files. An investigation usually starts with three questions
+— who was called, what was browsed, what the machine logged — so results that
+answer one of them are labelled with a class, and one filter selects them:
+
+```bash
+arachnid-recover list-results -i ./rec/results.json --type call-log
+arachnid-recover export -i ./rec/results.json -o ./rec/exported \
+  --type browser-history,system-log --confidence high,medium
+```
+
+| Class | Recognised as |
+|---|---|
+| `call-log` | Android `calllog.db` and `contacts2.db`, iOS `CallHistory.storedata` |
+| `browser-history` | Chromium's `History` inside a browser profile, Firefox `places.sqlite`, Safari `History.db`, IE `WebCacheV01.dat` |
+| `system-log` | anything under `/var/log`, Windows event logs, the systemd journal, and `syslog` / `auth.log` / `kern.log` by name |
+
+Two routes in, matching the two passes. A filesystem-recovered file still has
+its name, and the name is evidence. A carved file has no name, so the only thing
+left to read is the file itself: a SQLite database carries its schema as text on
+page one, so `moz_places` says Firefox and `ZCALLRECORD` says the iOS call
+history.
+
+A generic name is not enough — a bare `History` with no browser directory above
+it is left unlabelled, because the cost of a wrong label is an analyst reading
+an unrelated file as a suspect's browsing. And the class is never silent: an
+identified result carries an `artifact_identified` check naming the route and
+the evidence, exactly like every other claim here.
 
 ### Confidence scoring
 

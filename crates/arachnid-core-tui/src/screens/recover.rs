@@ -1492,6 +1492,7 @@ mod tests {
             accessed_utc: None,
             deleted: true,
             encrypted: None,
+            artifact: None,
             rationale: Rationale {
                 confidence,
                 summary: "test".into(),

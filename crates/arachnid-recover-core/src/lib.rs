@@ -25,6 +25,13 @@
 //! Every result carries a [`Confidence`] label *and* the [`Rationale`] behind
 //! it, because "High" and "Low" look identical once they are files in a folder.
 //!
+//! # Artifacts
+//!
+//! Both passes hand back files. What an investigation usually wants is one of
+//! three answers — who was called, what was browsed, what the machine logged —
+//! so results that are a call log, browser history or a system log are labelled
+//! as such and can be selected with a single `--type` filter. See [`artifacts`].
+//!
 //! # Order of operations
 //!
 //! ```no_run
@@ -45,6 +52,7 @@
 //! ```
 
 pub mod apfs;
+pub mod artifacts;
 pub mod carve;
 pub mod export;
 pub mod ext4;
@@ -200,6 +208,13 @@ pub fn scan(
             }
             Err(e) => problems.push(format!("carving pass: {e:#}")),
         }
+    }
+
+    // After both passes, so one rule covers every parser and the carver alike.
+    // The carver has already labelled what it identified from content; this is
+    // the path-based half, and it is the only half a filesystem result can use.
+    for file in &mut files {
+        artifacts::classify(file);
     }
 
     if cancel.load(Ordering::Relaxed) {
@@ -364,6 +379,40 @@ mod tests {
         assert_eq!(r.files.len(), 1);
         assert_eq!(r.files[0].confidence(), Confidence::Low);
         assert_eq!(r.counts(), (0, 0, 1));
+    }
+
+    /// The point of the artifact label: on a volume with no filesystem left to
+    /// parse, an analyst can still ask for the browser history by name.
+    #[test]
+    fn a_carved_history_database_is_selectable_by_artifact_class() {
+        let mut img = vec![0u8; 512];
+        img.extend(carve::test_sqlite_db(
+            4,
+            b"CREATE TABLE visits(id INTEGER, visit_duration INTEGER)",
+        ));
+        let mut s = MemorySource::new(img, "reformatted");
+
+        let options = ScanOptions {
+            filesystem_pass: false,
+            carve_pass: true,
+            carve_types: vec!["sqlite".into()],
+            ..Default::default()
+        };
+        let r = scan(
+            &mut s,
+            &options,
+            &Progress::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+
+        assert_eq!(r.files.len(), 1);
+        assert_eq!(r.files[0].artifact.as_deref(), Some("browser-history"));
+        assert_eq!(r.filter(&[], &["browser-history".into()]).count(), 1);
+        // The container type still selects it too; one list covers both.
+        assert_eq!(r.filter(&[], &["sqlite".into()]).count(), 1);
+        assert_eq!(r.filter(&[], &["call-log".into()]).count(), 0);
+        assert!(r.summary().contains("browser-history"));
     }
 
     #[test]

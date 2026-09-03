@@ -22,6 +22,7 @@ its source, like Core and unlike Sanitize. It is also reachable as screen `8` in
 - [Two passes, two kinds of claim](#two-passes-two-kinds-of-claim)
 - [Supported filesystems](#supported-filesystems)
 - [Carved file types](#carved-file-types)
+- [Call logs, browser history and system logs](#call-logs-browser-history-and-system-logs)
 - [Confidence scoring](#confidence-scoring)
 - [CLI reference](#cli-reference)
 - [Export and chain of custody](#export-and-chain-of-custody)
@@ -187,7 +188,7 @@ is the supported route today.
 
 ## Carved file types
 
-`jpg` · `png` · `pdf` · `zip` · `mp4` · `txt`
+`jpg` · `png` · `pdf` · `zip` · `mp4` · `sqlite` · `evtx` · `journal` · `txt`
 
 A carved ZIP is reported as `docx`, `xlsx` or `pptx` when its member layout says
 so, so an analyst does not have to open every archive to find the documents.
@@ -202,10 +203,17 @@ found structurally rather than guessed:
 | `pdf` | `%%EOF` |
 | `zip` | the end-of-central-directory record, plus its declared comment length |
 | `mp4` | walking the box chain and summing the declared box lengths. A box whose type is not four printable characters ends the walk |
+| `sqlite` | the page size and page count in the database's own header, which multiply to an exact length. SQLite only guarantees that count when the header's version-valid-for number matches the file change counter, so that is checked rather than assumed |
+| `evtx` | the chunk count in the Windows event log header: a 4096-byte header and that many 64 KiB chunks |
+| `journal` | the header size and arena size in the systemd journal header, which are the whole file between them |
 | `txt` | nothing. Plain text has no terminator, so the length is where printable bytes stopped — which is stated on the result, not implied away |
 
 `txt` is off by default. On a real volume it matches every log fragment and
 string table on the disk and buries everything else.
+
+A header that is unreadable or implausible does not lose the file: the carve
+falls back to the type's size cap, and the result says `footer_found: false` so
+the length reads as a bound rather than a claim.
 
 **Nested signatures.** A JPEG's EXIF thumbnail is itself a JPEG. Ranges already
 claimed by a carved file are skipped, so one photo produces one result rather
@@ -217,6 +225,56 @@ and flagged likely-incomplete. This build does **not** reassemble a fragmented
 file from non-adjacent runs: bi-fragment gap carving and its relatives guess, and
 in evidence a plausible-looking wrong reconstruction is worse than an honest
 partial one.
+
+---
+
+## Call logs, browser history and system logs
+
+Recovery hands back files. An investigation usually starts with three questions
+— who was called, what was browsed, what the machine logged — so results that
+answer one of them are labelled with a class, and one filter selects them:
+
+```bash
+arachnid-recover list-results -i ./rec/results.json --type call-log
+arachnid-recover export -i ./rec/results.json -o ./rec/exported \
+  --type browser-history,system-log --confidence high,medium
+```
+
+| Class | Recognised as |
+|---|---|
+| `call-log` | Android `calllog.db` and `contacts2.db`, iOS `CallHistory.storedata` and `call_history.db` |
+| `browser-history` | Chromium's `History` inside a browser profile, Firefox `places.sqlite`, Safari `History.db`, IE `WebCacheV01.dat` |
+| `system-log` | anything under `/var/log`, Windows event logs (`.evtx`, `winevt/Logs`), the systemd journal, and `syslog` / `auth.log` / `kern.log` / `system.log` by name |
+
+**Two routes in, matching the two passes.** A filesystem-recovered file still
+has its name, and the name is evidence: `places.sqlite` is Firefox's history
+store wherever it was found. A carved file has no name, so the only thing left
+to read is the file itself — a SQLite database carries its schema as text on
+page one, so `moz_places` says Firefox and `ZCALLRECORD` says the iOS call
+history, and the two binary log formats are identified by the signature the
+carver matched them on to begin with.
+
+**A generic name is not enough.** A bare `History` with no browser directory
+above it is left unlabelled. The cost of a wrong label here is an analyst
+reading an unrelated file as a suspect's browsing, which is worse than an
+unlabelled file they can still see in the results.
+
+The class is a claim like every other claim here, so it is never silent. An
+identified file carries an `artifact_identified` check naming the route and the
+evidence:
+
+```
+arachnid-recover list-results -i ./rec/results.json --detail carve-000001
+
+  artifact    call-log
+  checks
+    [ok] artifact_identified  call-log: the schema names "CREATE TABLE calls",
+                              which is the Android call log schema
+```
+
+The label does not change what a result is or what it scores. A carved database
+is still `Low`, still has no original name, and is still exported under the name
+the carver gave it.
 
 ---
 
@@ -371,7 +429,7 @@ passes, visible in one table.
 | Flag | Does |
 |---|---|
 | `--confidence` | keep only these levels: `high`, `medium`, `low` |
-| `--type` | keep only these file types |
+| `--type` | keep only these file types or artifact classes: `pdf`, `sqlite` … or `call-log`, `browser-history`, `system-log` |
 | `--detail <ID>` | print the full scoring rationale for one result |
 
 ### `export`
@@ -391,7 +449,7 @@ Record that fingerprint out of band. Re-check the export at any time with:
 
 | Flag | Does |
 |---|---|
-| `--confidence` / `--type` | which results to write |
+| `--confidence` / `--type` | which results to write; `--type` takes file types and artifact classes alike |
 | `--id` | export these result ids only; overrides the filters |
 | `--source` | read from this image instead of the one recorded in the results, for when the image has moved |
 | `--operator` | defaults to the operator recorded in the results |

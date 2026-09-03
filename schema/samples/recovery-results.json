@@ -15,7 +15,10 @@
     "png",
     "pdf",
     "zip",
-    "mp4"
+    "mp4",
+    "sqlite",
+    "evtx",
+    "journal"
   ],
   "filesystems": [
     {
@@ -172,7 +175,7 @@
       "deleted": false,
       "rationale": {
         "confidence": "low",
-        "summary": "raw-carved jpg: header and the format's own terminator both present, so the extent is structurally bounded — but completeness is unverified and no original metadata exists",
+        "summary": "raw-carved jpg: the header is present and the format itself bounds the extent — but completeness is unverified and no original metadata exists",
         "checks": [
           {
             "check": "signature_matched",
@@ -182,7 +185,7 @@
           {
             "check": "footer_found",
             "passed": true,
-            "detail": "the format's own terminator was found 206 bytes in"
+            "detail": "the format's own structure bounds the file at 206 bytes"
           },
           {
             "check": "within_size_cap",
@@ -217,7 +220,7 @@
       "deleted": false,
       "rationale": {
         "confidence": "low",
-        "summary": "raw-carved pdf: header and the format's own terminator both present, so the extent is structurally bounded — but completeness is unverified and no original metadata exists",
+        "summary": "raw-carved pdf: the header is present and the format itself bounds the extent — but completeness is unverified and no original metadata exists",
         "checks": [
           {
             "check": "signature_matched",
@@ -227,7 +230,7 @@
           {
             "check": "footer_found",
             "passed": true,
-            "detail": "the format's own terminator was found 36 bytes in"
+            "detail": "the format's own structure bounds the file at 36 bytes"
           },
           {
             "check": "within_size_cap",
