@@ -54,6 +54,9 @@ pub const SUMMARY_FILE: &str = "summary.txt";
 metadata (NTFS MFT, ext4 inodes and journal) and by carving raw sectors for file signatures.\n\n\
 Read-only against the source. Output always goes to a separate directory you name, and every \
 exported file is hashed into a signed chain-of-custody log that `arachnid-core verify` checks.\n\n\
+Call logs, browser history and system logs are identified as they are found — by path where the \
+filesystem still held one, and by schema or file format where it did not — and are selected with \
+`--type call-log,browser-history,system-log`.\n\n\
 Encrypted files are reported as encrypted and left alone. No key recovery, password guessing or \
 brute force of any kind is implemented.\n\n\
 EXIT CODES\n  \
@@ -164,7 +167,8 @@ struct ListArgs {
     #[arg(long, value_name = "LIST", value_delimiter = ',')]
     confidence: Vec<String>,
 
-    /// Keep only these file types, comma-separated.
+    /// Keep only these file types or artifact classes, comma-separated:
+    /// pdf, jpg, sqlite … or call-log, browser-history, system-log.
     #[arg(long = "type", value_name = "LIST", value_delimiter = ',')]
     types: Vec<String>,
 
@@ -193,7 +197,7 @@ struct ExportArgs {
     #[arg(long, value_name = "LIST", value_delimiter = ',')]
     confidence: Vec<String>,
 
-    /// Export only these file types, comma-separated.
+    /// Export only these file types or artifact classes, comma-separated.
     #[arg(long = "type", value_name = "LIST", value_delimiter = ',')]
     types: Vec<String>,
 
@@ -518,6 +522,9 @@ fn cmd_list(cli: &Cli, a: &ListArgs) -> Result<u8> {
         println!("  method      {}", file.method.label());
         println!("  type        {}", file.file_type);
         println!("  size        {} bytes", file.size);
+        if let Some(a) = &file.artifact {
+            println!("  artifact    {a}");
+        }
         println!("  deleted     {}", file.deleted);
         if let Some(t) = &file.modified_utc {
             println!("  modified    {t}");
@@ -564,13 +571,17 @@ fn cmd_list(cli: &Cli, a: &ListArgs) -> Result<u8> {
     );
     for f in &selected {
         println!(
-            "{:<14} {:<8} {:<6} {:>12}  {:<12} {}{}",
+            "{:<14} {:<8} {:<6} {:>12}  {:<12} {}{}{}",
             f.id,
             f.rationale.confidence.label(),
             f.file_type,
             f.size,
             f.method.label(),
             f.display_name(),
+            f.artifact
+                .as_deref()
+                .map(|a| format!("  [{a}]"))
+                .unwrap_or_default(),
             if f.encrypted.is_some() {
                 "  [ENCRYPTED]"
             } else {

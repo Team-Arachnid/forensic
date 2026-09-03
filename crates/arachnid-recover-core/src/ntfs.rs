@@ -766,6 +766,7 @@ fn assemble(
         accessed_utc: rec.accessed.clone(),
         deleted,
         encrypted,
+        artifact: None,
         rationale: Rationale {
             confidence,
             summary,

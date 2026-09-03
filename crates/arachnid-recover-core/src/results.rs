@@ -165,6 +165,14 @@ pub struct RecoveredFile {
     /// the suite implements no key recovery, guessing or brute force.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encrypted: Option<String>,
+    /// The artifact class this file was identified as — `call-log`,
+    /// `browser-history`, `system-log` — where one was. See
+    /// [`crate::artifacts`]. Absent means "not one of them, or not identifiable
+    /// as one", never "checked and ruled out".
+    ///
+    /// Defaulted so an index written before this field existed still loads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<String>,
     pub rationale: Rationale,
 }
 
@@ -177,6 +185,18 @@ impl RecoveredFile {
     /// name otherwise.
     pub fn display_name(&self) -> &str {
         self.original_path.as_deref().unwrap_or(&self.export_name)
+    }
+
+    /// True when `t` names this file's container type (`jpg`, `sqlite`) or the
+    /// artifact class it was identified as (`browser-history`). One `--type`
+    /// list selects on either, because an analyst after the call log does not
+    /// care which database engine it is stored in.
+    pub fn matches_type(&self, t: &str) -> bool {
+        t.eq_ignore_ascii_case(&self.file_type)
+            || self
+                .artifact
+                .as_deref()
+                .is_some_and(|a| t.eq_ignore_ascii_case(a))
     }
 }
 
@@ -254,7 +274,7 @@ impl ScanResults {
     ) -> impl Iterator<Item = &'a RecoveredFile> {
         self.files.iter().filter(move |f| {
             (confidence.is_empty() || confidence.contains(&f.confidence()))
-                && (types.is_empty() || types.iter().any(|t| t.eq_ignore_ascii_case(&f.file_type)))
+                && (types.is_empty() || types.iter().any(|t| f.matches_type(t)))
         })
     }
 
@@ -313,6 +333,26 @@ impl ScanResults {
              Medium filesystem metadata found, data partly overwritten or truncated\n\
              Low    raw-carved: structurally valid, completeness unverified\n",
         );
+
+        let artifacts: Vec<(&str, usize)> = crate::artifacts::CLASSES
+            .iter()
+            .map(|class| {
+                let n = self
+                    .files
+                    .iter()
+                    .filter(|f| f.artifact.as_deref() == Some(*class))
+                    .count();
+                (*class, n)
+            })
+            .filter(|(_, n)| *n > 0)
+            .collect();
+        if !artifacts.is_empty() {
+            s.push_str("\nArtifacts identified\n");
+            for (class, n) in artifacts {
+                s.push_str(&format!("  {class:<16} {n}\n"));
+            }
+            s.push_str("  list one class with: arachnid-recover list-results --type <class>\n");
+        }
 
         let encrypted: Vec<_> = self
             .files
