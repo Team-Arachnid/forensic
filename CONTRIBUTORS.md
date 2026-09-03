@@ -9,6 +9,7 @@ Arachnid Core is built and maintained by the Arachnid team.
 | Shristy Paliwal | [@shristypaliwal](https://github.com/shristypaliwal) | Documentation — README, threat model, SOC allowlisting guide and the JSON Schemas |
 | Barbie Grover | [@BarbieGrover](https://github.com/BarbieGrover) | Documentation — the project wiki, the Pages site and the usage guide |
 | Priyanshu | [@madmaxgodzzz](https://github.com/madmaxgodzzz) | Landing page — sections, copy, responsive layout and WCAG AA accessibility |
+| Parth Sachdeva | [@mrparthsachdeva](https://github.com/mrparthsachdeva) | Artifact recovery — call log, browser history and system log identification in `arachnid-recover-core` |
 
 ## Ownership by area
 
@@ -20,6 +21,7 @@ Arachnid Core is built and maintained by the Arachnid team.
 | `crates/arachnid-core-tui`, `crates/arachnid-core-cli` | Shubham Choudhary |
 | `crates/arachnid-cli` | Shubham Choudhary |
 | `crates/arachnid-recover-core`, `crates/arachnid-recover-cli` | Shubham Choudhary |
+| `crates/arachnid-recover-core/src/artifacts.rs` | Parth Sachdeva |
 | `crates/arachnid-netcap` | Divyanshu |
 | `crates/arachnid-sanitize-core`, `crates/arachnid-sanitize-cli` | Divyanshu |
 | `README.md`, `THREAT_MODEL.md`, `docs/SOC-ALLOWLISTING.md`, `schema/` | Shristy Paliwal |
