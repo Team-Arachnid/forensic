@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use arachnid_collect as collect;
+use arachnid_evidence::bsa63_certificate as bsa63;
 use arachnid_evidence::{Container, VerifyReport};
 use arachnid_netcap as netcap;
 use arachnid_report::{seal_into, to_html, to_markdown, Report};
@@ -26,8 +27,9 @@ mod exit {
     pub const OK: u8 = 0;
     /// Runtime failure: I/O, permission, missing device, unusable input.
     pub const ERROR: u8 = 1;
-    /// Reserved: clap uses 2 for argument and usage errors.
-    pub const _USAGE: u8 = 2;
+    /// Argument and usage errors. clap returns this itself; a command returns
+    /// it when an affirmation the operator must make was not made.
+    pub const USAGE: u8 = 2;
     /// Integrity failure. `verify` found a container that does not check out.
     pub const INTEGRITY: u8 = 3;
     /// The run produced evidence, but at least one collector was degraded.
@@ -46,7 +48,7 @@ EXIT CODES\n  \
 0  success\n  \
 1  runtime error\n  \
 2  usage error\n  \
-3  integrity failure (verify found a problem)\n  \
+3  integrity failure: verify found a problem, or certify refused\n  \
 4  completed, but one or more collectors were degraded (see report warnings)"
 )]
 struct Cli {
@@ -79,6 +81,8 @@ enum Command {
     Verify(VerifyArgs),
     /// Re-render the human-readable summary from a container's JSON report.
     Report(ReportArgs),
+    /// Generate a Section 63 (BSA 2023) certificate over a verified container.
+    Certify(Box<CertifyArgs>),
 }
 
 #[derive(Args)]
@@ -220,6 +224,127 @@ enum ReportFormat {
     Json,
 }
 
+#[derive(Args)]
+struct CertifyArgs {
+    /// Evidence container to certify. Verified before anything is generated;
+    /// a container that does not verify is refused.
+    #[arg(short, long, value_name = "CONTAINER")]
+    input: PathBuf,
+
+    /// Where to write the certificate. The PDF goes here (`.pdf` is appended
+    /// if absent) and the signed JSON alongside it with the same stem — one
+    /// invocation, one certificate, two renderings of the same document.
+    #[arg(short, long, value_name = "PATH")]
+    output: PathBuf,
+
+    /// Case or reference number this record belongs to.
+    #[arg(long, value_name = "TEXT")]
+    case_reference: String,
+
+    /// What the electronic record is, in the words a court will read.
+    #[arg(long, value_name = "TEXT")]
+    record_description: String,
+
+    /// Signer 1 (device custodian): full name, as it appears on the certificate.
+    #[arg(
+        long,
+        value_name = "NAME",
+        help_heading = "Signer 1 — device custodian"
+    )]
+    custodian_name: String,
+
+    /// Signer 1: designation or role.
+    #[arg(
+        long,
+        value_name = "TEXT",
+        help_heading = "Signer 1 — device custodian"
+    )]
+    custodian_designation: String,
+
+    /// Signer 1: organization.
+    #[arg(
+        long,
+        value_name = "TEXT",
+        help_heading = "Signer 1 — device custodian"
+    )]
+    custodian_organization: String,
+
+    /// Signer 1: contact details — an email address, a phone number, or both.
+    #[arg(
+        long,
+        value_name = "TEXT",
+        help_heading = "Signer 1 — device custodian"
+    )]
+    custodian_contact: String,
+
+    /// Signer 1: Ed25519 key file for the in-software attestation path.
+    /// Requires the expert's key too; omit both for wet-ink signature.
+    #[arg(
+        long,
+        value_name = "PATH",
+        requires = "expert_key",
+        help_heading = "Signer 1 — device custodian"
+    )]
+    custodian_key: Option<PathBuf>,
+
+    /// Signer 2 (independent expert): full name.
+    #[arg(
+        long,
+        value_name = "NAME",
+        help_heading = "Signer 2 — independent expert"
+    )]
+    expert_name: String,
+
+    /// Signer 2: designation or role.
+    #[arg(
+        long,
+        value_name = "TEXT",
+        help_heading = "Signer 2 — independent expert"
+    )]
+    expert_designation: String,
+
+    /// Signer 2: organization.
+    #[arg(
+        long,
+        value_name = "TEXT",
+        help_heading = "Signer 2 — independent expert"
+    )]
+    expert_organization: String,
+
+    /// Signer 2: contact details.
+    #[arg(
+        long,
+        value_name = "TEXT",
+        help_heading = "Signer 2 — independent expert"
+    )]
+    expert_contact: String,
+
+    /// Signer 2: Ed25519 key file for the in-software attestation path.
+    #[arg(
+        long,
+        value_name = "PATH",
+        requires = "custodian_key",
+        help_heading = "Signer 2 — independent expert"
+    )]
+    expert_key: Option<PathBuf>,
+
+    /// The device did not operate properly: state the malfunction and why it
+    /// did not affect the accuracy of the record. Section 63(2) permits a
+    /// malfunction; it does not permit an unstated one.
+    #[arg(long, value_name = "TEXT")]
+    malfunction: Option<String>,
+
+    /// Affirm the Section 63(2) conditions, which `--help` prints in full.
+    /// Required: the tool cannot observe whether a computer was in regular
+    /// use, so it will not assert it on anyone's behalf.
+    #[arg(long)]
+    affirm_conditions: bool,
+
+    /// Acknowledge the disclaimer printed above. Required.
+    #[arg(long)]
+    acknowledge: bool,
+}
+
 /// Parse `args` and run, returning the process exit code.
 ///
 /// Takes the argument list rather than reading it, so the unified
@@ -290,6 +415,7 @@ fn run(cli: &Cli) -> Result<u8> {
         Command::ParsePcap(a) => cmd_parse_pcap(cli, a),
         Command::Verify(a) => cmd_verify(cli, a),
         Command::Report(a) => cmd_report(cli, a),
+        Command::Certify(a) => cmd_certify(cli, a),
     }
 }
 
@@ -568,6 +694,166 @@ fn cmd_report(_cli: &Cli, a: &ReportArgs) -> Result<u8> {
         }
         None => print!("{rendered}"),
     }
+    Ok(exit::OK)
+}
+
+// ---------------------------------------------------------------------------
+// certify
+// ---------------------------------------------------------------------------
+
+/// The notice printed before a certificate run does anything at all.
+///
+/// Deliberately first: an operator has to see what this document is and is not
+/// *before* supplying signer details, not after holding a finished PDF. The
+/// text comes from the certificate module, so the notice and the document
+/// cannot drift apart.
+fn certificate_notice() -> String {
+    let mut s = String::from(
+        "\nCERTIFICATE UNDER SECTION 63, BHARATIYA SAKSHYA ADHINIYAM, 2023\n\
+         ---------------------------------------------------------------\n\n",
+    );
+    s.push_str(bsa63::DISCLAIMER);
+    s.push_str(
+        "\n\nThe certificate states the conditions below, under Section 63(2). \
+         --affirm-conditions affirms them on behalf of the signers; this tool cannot observe \
+         them and will not assert them on anyone's behalf.\n\n",
+    );
+    for (i, c) in bsa63::CONDITIONS.iter().enumerate() {
+        s.push_str(&format!("  ({})  {c}\n\n", (b'a' + i as u8) as char));
+    }
+    s.push_str(
+        "Section 63(4) requires two different people to sign: the person in charge of the \
+         computer or communication device, and an independent expert. Whether the second signer \
+         is genuinely independent is a human judgement this tool cannot make; it only refuses a \
+         certificate where both signers give the same name, organization and contact.\n\n",
+    );
+    s
+}
+
+fn cmd_certify(cli: &Cli, a: &CertifyArgs) -> Result<u8> {
+    // On stderr, so the notice still reaches an operator who redirected stdout
+    // to a file and would otherwise never see it.
+    eprint!("{}", certificate_notice());
+    if !a.acknowledge || !a.affirm_conditions {
+        eprintln!(
+            "error: --acknowledge and --affirm-conditions are both required. Read the notice \
+             above; nothing is generated until they are given."
+        );
+        return Ok(exit::USAGE);
+    }
+
+    let conditions = match a.malfunction.as_deref() {
+        Some(note) => bsa63::Conditions::with_malfunction(note),
+        None => bsa63::Conditions::operating_properly(),
+    };
+    let request = bsa63::Request {
+        case_reference: a.case_reference.clone(),
+        record_description: a.record_description.clone(),
+        conditions,
+        custodian: bsa63::Signer::new(
+            bsa63::Capacity::DeviceCustodian,
+            &a.custodian_name,
+            &a.custodian_designation,
+            &a.custodian_organization,
+            &a.custodian_contact,
+        ),
+        expert: bsa63::Signer::new(
+            bsa63::Capacity::IndependentExpert,
+            &a.expert_name,
+            &a.expert_designation,
+            &a.expert_organization,
+            &a.expert_contact,
+        ),
+    };
+
+    tracing::info!(container = %a.input.display(), "verifying evidence before certifying it");
+    let mut signed = match bsa63::issue(&a.input, &request) {
+        Ok(c) => c,
+        Err(refused) => {
+            // A refusal is the feature working, not failing: say why in the
+            // refusal's own words and exit on the refused-job code.
+            eprintln!("{refused}");
+            return Ok(exit::INTEGRITY);
+        }
+    };
+
+    // Both keys or neither: clap's `requires` enforces the pairing, so seeing
+    // one here means seeing both.
+    if let (Some(ck), Some(ek)) = (&a.custodian_key, &a.expert_key) {
+        let custodian = arachnid_evidence::load_signing_key(ck)?;
+        let expert = arachnid_evidence::load_signing_key(ek)?;
+        if custodian.verifying_key() == expert.verifying_key() {
+            bail!(
+                "both signers presented the same key; an attestation made twice with one key is \
+                 one person's attestation, not two"
+            );
+        }
+        signed.attest(bsa63::Capacity::DeviceCustodian, &custodian);
+        signed.attest(bsa63::Capacity::IndependentExpert, &expert);
+    }
+
+    // Both paths are derived from one base, so the two files are always
+    // renderings of the same certificate rather than two certificates
+    // generated a second apart.
+    let pdf_path = a.output.with_extension("pdf");
+    let json_path = a.output.with_extension("json");
+    if let Some(parent) = pdf_path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&pdf_path, signed.to_pdf())
+        .with_context(|| format!("write {}", pdf_path.display()))?;
+    std::fs::write(&json_path, signed.to_json())
+        .with_context(|| format!("write {}", json_path.display()))?;
+    tracing::info!(pdf = %pdf_path.display(), json = %json_path.display(), "certificate written");
+
+    // Loud, and on stderr in both output modes: a signer's name reaching the
+    // page as question marks is not something to find out in court.
+    for limitation in signed.pdf_limitations() {
+        eprintln!("warning: {limitation}");
+    }
+
+    let c = &signed.certificate;
+    if cli.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "certificate_id": c.certificate_id,
+                "case_reference": c.case_reference,
+                "container": c.source.container_path,
+                "custody_key_fingerprint": c.source.custody_key_fingerprint,
+                "artifacts_verified": c.source.artifacts_verified,
+                "attestations": signed.attestations.len(),
+                "pdf": pdf_path.display().to_string(),
+                "json": json_path.display().to_string(),
+            }))?
+        );
+        return Ok(exit::OK);
+    }
+
+    println!("Certificate {} generated.", c.certificate_id);
+    println!("  case            {}", c.case_reference);
+    println!("  container       {}", c.source.container_path);
+    println!(
+        "  artifacts       {} re-verified",
+        c.source.artifacts_verified
+    );
+    println!("  custody key     {}", c.source.custody_key_fingerprint);
+    println!("  pdf             {}", pdf_path.display());
+    println!("  json            {}", json_path.display());
+    match signed.attestations.len() {
+        0 => println!(
+            "\nNo in-software attestation was recorded. Print the PDF and have both signers sign \
+             the certificate."
+        ),
+        n => println!(
+            "\n{n} in-software attestation(s) recorded. These are not represented as equivalent \
+             to wet-ink signatures."
+        ),
+    }
+    println!(
+        "\nHave the certificate template reviewed by qualified legal counsel before relying on \
+         it in any proceeding."
+    );
     Ok(exit::OK)
 }
 

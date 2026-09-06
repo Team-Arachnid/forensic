@@ -29,6 +29,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
+pub mod bsa63_certificate;
+
 /// Bumped when the on-disk container layout changes incompatibly.
 pub const SCHEMA_VERSION: &str = "1.0.0";
 const GENESIS_PREV: &str = "0000000000000000000000000000000000000000000000000000000000000000";
