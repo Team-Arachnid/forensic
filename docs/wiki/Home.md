@@ -45,6 +45,7 @@ arachnid-recover export -i ./rec/results.json -o ./rec/out --confidence high,med
 | Driving the TUI | [Terminal UI Guide](04-TUI-Guide.md) |
 | A SOC being asked to allow this binary | [Security & Threat Model](10-Security-and-Threat-Model.md), then [SOC Allowlisting](../SOC-ALLOWLISTING.md) |
 | Consuming the output from another tool | [Reports & Schemas](08-Reports-and-Schemas.md) |
+| Producing a Section 63 BSA certificate for a container | [CLI Reference § `certify`](03-CLI-Reference.md#certify) |
 | Recovering deleted files from an image | [File Recovery](15-File-Recovery.md) |
 | Wiping a drive for disposal | [Secure Erasure](14-Secure-Erasure.md) |
 | Contributing code | [Development](11-Development.md) |

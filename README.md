@@ -19,6 +19,7 @@ arachnid-core capture     -o ./ev-net -d eth0 --duration 300 -f "not port 22"
 arachnid-core parse-pcap  suspicious.pcap -o ./ev-pcap
 arachnid-core verify      ./ev-host01                 # exit 0 = intact, 3 = tampered
 arachnid-core report      ./ev-host01 --format html -o triage.html
+arachnid-core certify     -i ./ev-host01 -o ./cert    # Section 63 BSA certificate
 
 arachnid-tui                                          # the same engine, driven from a TUI
 ```
@@ -230,13 +231,13 @@ Every command below is shown as the standalone binary, which is what scripts
 tend to name. `arachnid-cli` runs the same code through module groups:
 
 ```bash
-arachnid-cli core     collect | capture | parse-pcap | verify | report
+arachnid-cli core     collect | capture | parse-pcap | verify | certify | report
 arachnid-cli recover  scan | carve | list-results | export
 arachnid-cli sanitize list-devices | wipe | verify-wipe | cert
 arachnid-cli tui | doctor | version | self update | self uninstall
 ```
 
-The five `core` commands also work without the prefix — `arachnid-cli collect
+The six `core` commands also work without the prefix — `arachnid-cli collect
 -o ./ev` — which is the form older scripts use, and which keeps working. It
 dispatches in-process, so `--help` and the exit codes are the module's own.
 

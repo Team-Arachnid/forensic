@@ -419,7 +419,7 @@ echo "report: ${OUT}.html"
 
 Key points:
 
-- **`--json` on `collect`, `capture`, `parse-pcap` and `verify`** gives
+- **`--json` on `collect`, `capture`, `parse-pcap`, `verify` and `certify`** gives
   structured stdout. (`report` chooses its rendering with `--format json`
   instead.) The operational log goes to stderr or `--log`, so the two never
   interleave.

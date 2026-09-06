@@ -193,7 +193,7 @@ Five binaries land in `target/release/`:
 | Binary | What it is |
 |---|---|
 | `arachnid-cli` | **the entry point.** The TUI bare; every command below with a subcommand |
-| `arachnid-core` | the triage CLI on its own — collect, capture, parse-pcap, verify, report |
+| `arachnid-core` | the triage CLI on its own — collect, capture, parse-pcap, verify, certify, report |
 | `arachnid-recover` | file recovery on its own — see [Arachnid Recover](#arachnid-recover) |
 | `arachnid-sanitize` | **destructive.** Secure erasure on its own — see [Arachnid Sanitize](#arachnid-sanitize) |
 | `arachnid-tui` | the terminal UI on its own |
@@ -323,6 +323,7 @@ arachnid-core capture    -o ./ev-net -d eth0 --duration 300       # live traffic
 arachnid-core parse-pcap suspicious.pcap -o ./ev-pcap             # offline analysis
 arachnid-core verify     ./ev-host01                              # 0 intact, 3 tampered
 arachnid-core report     ./ev-host01 --format html -o triage.html # human summary
+arachnid-core certify    -i ./ev-host01 -o ./cert-2026-0117      # Section 63 BSA certificate
 
 arachnid-tui                                                      # the same engine, driven from a TUI
 
@@ -1500,7 +1501,7 @@ Stable across releases, for SOAR playbooks and IR scripts:
 | `0` | success |
 | `1` | runtime error — I/O, permission, missing device, unusable input |
 | `2` | usage error (bad flags) |
-| `3` | integrity failure — `verify` found a problem; or a Recover/Sanitize safety rail refused the job |
+| `3` | integrity failure — `verify` found a problem; `certify` refused; or a Recover/Sanitize safety rail refused the job |
 | `4` | completed, but something was degraded or skipped; see `warnings` in the report, or `problems` and `unsupported` in a recovery results index |
 
 **Code 4 is the interesting one.** You *have* evidence, and it is incomplete.
