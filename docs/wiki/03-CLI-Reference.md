@@ -25,6 +25,7 @@ worked examples and real output.
 - [`capture`](#capture)
 - [`parse-pcap`](#parse-pcap)
 - [`verify`](#verify)
+- [`certify`](#certify)
 - [`report`](#report)
 - [Exit codes](#exit-codes)
 - [Environment variables](#environment-variables)
@@ -41,6 +42,7 @@ Commands:
   capture     Capture live network traffic to a PCAP file inside an evidence container
   parse-pcap  Parse an existing PCAP/PCAPNG: flows, TCP streams, indicators
   verify      Re-hash a container's artifacts and check them against its signed log
+  certify     Issue a Section 63 BSA certificate for a verified container
   report      Re-render the human-readable summary from a container's JSON report
   help        Print this message or the help of the given subcommand(s)
 ```
@@ -64,7 +66,7 @@ exit codes are the module's own, not a second copy that can drift from them.
 
 ```
 arachnid-cli                             open the terminal UI
-arachnid-cli core     <command>          collect | capture | parse-pcap | verify | report
+arachnid-cli core     <command>          collect | capture | parse-pcap | verify | certify | report
 arachnid-cli recover  <command>          scan | carve | list-results | export
 arachnid-cli sanitize <command>          list-devices | wipe | verify-wipe | cert
 arachnid-cli tui                         the TUI, explicitly
@@ -77,7 +79,7 @@ arachnid-cli self uninstall [--yes]      remove it and revert the installer's PA
 arachnid-cli --no-update-check <cmd>     skip the launch-time version check
 ```
 
-The five `core` commands also work **without** the `core` prefix —
+The six `core` commands also work **without** the `core` prefix —
 `arachnid-cli collect -o ./ev` — which is the form every script and doc page
 written before the groups existed uses. That is a compatibility promise, not an
 accident.
@@ -651,6 +653,158 @@ all (missing `manifest.json` or `custody.log`).
 
 ---
 
+## `certify`
+
+Issue a certificate under **Section 63 of the Bharatiya Sakshya Adhiniyam,
+2023** for a container that verifies, as a signable PDF and as JSON.
+
+```
+arachnid-core certify [OPTIONS] -i <CONTAINER> -o <PATH>
+```
+
+> The template is generated to align with the structure of Section 63. It is
+> not legal advice and does not itself guarantee admissibility. Have it
+> reviewed by qualified legal counsel before relying on it in a proceeding.
+
+| Flag | Meaning |
+|---|---|
+| `-i, --input <CONTAINER>` | container to certify. **Verified first**; one that does not verify is refused |
+| `-o, --output <PATH>` | certificate path. Writes `<PATH>.pdf` and `<PATH>.json` — one invocation, one certificate, two renderings |
+| `--case-reference <TEXT>` | case or reference number this record belongs to |
+| `--record-description <TEXT>` | what the electronic record is, in the words a court will read |
+| `--malfunction <TEXT>` | the device did **not** operate properly: state the malfunction and why it did not affect accuracy. Section 63(2) permits a malfunction, not an unstated one |
+| `--affirm-conditions` | **required** — affirms the four Section 63(2) conditions on behalf of the signers |
+| `--acknowledge` | **required** — acknowledges the disclaimer printed before anything is generated |
+
+Two signers, in the two roles Section 63(4) names, each with four particulars:
+
+| Signer 1 — device custodian | Signer 2 — independent expert |
+|---|---|
+| `--custodian-name <NAME>` | `--expert-name <NAME>` |
+| `--custodian-designation <TEXT>` | `--expert-designation <TEXT>` |
+| `--custodian-organization <TEXT>` | `--expert-organization <TEXT>` |
+| `--custodian-contact <TEXT>` | `--expert-contact <TEXT>` |
+| `--custodian-key <PATH>` | `--expert-key <PATH>` |
+
+Every particular is required. The two key flags are optional and go together —
+give both or neither; clap rejects one alone.
+
+### What it will not do
+
+`certify` refuses, rather than issuing a weaker certificate, when:
+
+- the container does not verify, or cannot be read at all;
+- any statutory particular is blank;
+- both signers give the same name, organization *and* contact — Section 63(4)
+  wants two different people;
+- the same key is presented for both attestations.
+
+It cannot check that the second signer is genuinely *independent*, that the
+device was in regular use, or that information was fed in in the ordinary
+course. Those are human assertions, which is why `--affirm-conditions` exists
+instead of the tool asserting them for you.
+
+### Example
+
+```bash
+arachnid-core certify   -i ./ev-host01 -o ./cert-ARC-2026-0117   --case-reference 'ARC/2026/0117'   --record-description 'Volatile system state acquired from host01'   --custodian-name 'A. Custodian'   --custodian-designation 'Systems Administrator'   --custodian-organization 'Example Corp'   --custodian-contact 'custodian@example.com'   --expert-name 'B. Expert'   --expert-designation 'Digital Forensics Examiner'   --expert-organization 'Independent Forensics LLP'   --expert-contact 'expert@example.org'   --affirm-conditions --acknowledge
+```
+
+The disclaimer, the four conditions and the two-signer rule print on **stderr**
+first — before signer details are read and before any file is written, so
+redirecting stdout to a file does not hide them. Then, on stdout:
+
+```
+Certificate 501a3db102435a88317eeb0e41edbcf9 generated.
+  case            ARC/2026/0117
+  container       ./ev-host01
+  artifacts       8 re-verified
+  custody key     1a52818b441a1f1155875a23731ca12d68abb024c90fbf3d964f4395248ad4fe
+  pdf             ./cert-ARC-2026-0117.pdf
+  json            ./cert-ARC-2026-0117.json
+
+No in-software attestation was recorded. Print the PDF and have both signers sign the certificate.
+
+Have the certificate template reviewed by qualified legal counsel before relying on it in any proceeding.
+```
+
+The source facts — container id, collecting operator, host, custody key
+fingerprint, and every artifact name, size and SHA-256 — are read out of the
+container's own signed log, not typed in. Nothing on the certificate about the
+evidence is self-asserted.
+
+### Example — refused
+
+```bash
+arachnid-core certify -i ./ev-host01 -o ./cert …; echo "exit=$?"
+```
+
+```
+no certificate: the evidence container does not verify (2). A certificate must not vouch for a
+record whose own custody log does not: artifact connections.json: content modified since
+collection; artifact connections.json: size differs from record
+exit=3
+```
+
+### Signing: wet ink, or in-software
+
+Without `--custodian-key` / `--expert-key` the PDF is a printable form with a
+signature block for each signer: print it, sign it, and the wet-ink signatures
+are the signatures.
+
+With both keys, each signer's Ed25519 key also attests the certificate body
+in-software, and the attestations are carried in the JSON. They are **not**
+represented as equivalent to wet-ink signatures — they are evidence that the
+holder of a specific key attested to a specific set of bytes. The keys are the
+same format `--signing-key` takes (see [Shared container
+options](#shared-container-options)); presenting one key for both signers is
+refused.
+
+### The PDF renders WinAnsi only
+
+The PDF is written with the standard Helvetica base font, so it can only render
+WinAnsi (Latin-1) characters. A name in Devanagari, Tamil or any other
+non-Latin script would silently become question marks on the page, so it is
+reported instead:
+
+```
+warning: the device custodian's name contains characters the PDF cannot render (श्रीएकसटोडियन);
+it appears there as question marks. The JSON output carries it intact.
+```
+
+The warning goes to stderr in both output modes. A signer's name reaching the
+page as question marks is not something to discover in court.
+
+### Machine-readable
+
+```bash
+arachnid-core --json certify -i ./ev-host01 -o ./cert-ARC-2026-0117 …
+```
+
+```json
+{
+  "certificate_id": "501a3db102435a88317eeb0e41edbcf9",
+  "case_reference": "ARC/2026/0117",
+  "container": "./ev-host01",
+  "custody_key_fingerprint": "1a52818b441a1f1155875a23731ca12d68abb024c90fbf3d964f4395248ad4fe",
+  "artifacts_verified": 8,
+  "attestations": 0,
+  "pdf": "./cert-ARC-2026-0117.pdf",
+  "json": "./cert-ARC-2026-0117.json"
+}
+```
+
+The certificate JSON written to disk is the full document: `certificate` (the
+body an attestation covers, byte for byte) and `attestations`.
+
+### Exit codes
+
+`0` issued · `2` `--acknowledge` or `--affirm-conditions` missing, or bad flags
+· `3` refused — the container does not verify, a particular is blank, or the
+signers are not distinct · `1` the certificate could not be written.
+
+---
+
 ## `report`
 
 Re-render the human-readable summary from a container's JSON report.
@@ -701,7 +855,7 @@ schema major version.
 | `0` | success |
 | `1` | runtime error — I/O, permission, missing device, unusable input |
 | `2` | usage error (bad flags) |
-| `3` | integrity failure — `verify` found a problem |
+| `3` | integrity failure — `verify` found a problem, or `certify` refused a container that does not verify |
 | `4` | completed, but a collector was degraded, packets were dropped, or frames failed to decode |
 
 Stable across releases. See

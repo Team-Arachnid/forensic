@@ -30,7 +30,7 @@ pub mod update;
 
 /// Module groups. The first token after any globals selects one, and everything
 /// after it belongs to that module's own parser.
-const GROUPS: [&str; 3] = ["core", "recover", "sanitize"];
+const GROUPS: [&str; 4] = ["core", "evidence", "recover", "sanitize"];
 
 /// `arachnid-core`'s own subcommands.
 ///
@@ -58,6 +58,8 @@ USAGE
 MODULES
   core       collect | capture | parse-pcap | verify | report
              live triage and network forensics. Read-only against the target.
+  evidence   certify
+             court certificates over a verified container. Read-only.
   recover    scan | carve | list-results | export
              file carving and recovery. Read-only against the source.
   sanitize   list-devices | wipe | verify-wipe | cert
@@ -78,6 +80,7 @@ older scripts use:  arachnid-cli collect -o ./ev-host01
 
 Add --help to any command for its own options, e.g.
   arachnid-cli core collect --help
+  arachnid-cli evidence certify --help
   arachnid-cli recover scan --help
   arachnid-cli sanitize wipe --help
 
