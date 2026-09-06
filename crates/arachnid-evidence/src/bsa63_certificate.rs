@@ -541,12 +541,23 @@ impl SignedCertificate {
         });
     }
 
-    /// Re-check the digest and every attestation. Returns the problems found,
-    /// empty when the certificate is intact.
+    /// Re-check the digest, every attestation, and the Section 63(4) shape of
+    /// the attestation set. Returns the problems found, empty when the
+    /// certificate is internally consistent.
     ///
     /// Independent of the writing path: it re-serializes the body and re-hashes
     /// it rather than trusting `body_sha256`, so a mismatch between the two is
     /// itself a finding.
+    ///
+    /// What an empty result does **not** mean: that these are the right people.
+    /// A certificate is a self-contained document, so anyone able to rewrite it
+    /// can rewrite the body, the digest and the attestations together with keys
+    /// of their own making, and that forgery is internally consistent by
+    /// construction. Authenticity rests on the keys, and this file is not a
+    /// trustworthy source of them. To establish it, compare each attestation's
+    /// `public_key` against the key that signer is independently known to hold
+    /// — the same hex string is printed on the certificate itself, so paper and
+    /// file can be checked against each other and against a key on record.
     pub fn check(&self) -> Vec<String> {
         use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
@@ -572,6 +583,51 @@ impl SignedCertificate {
                     a.signer_name,
                     a.capacity.label()
                 ));
+            }
+            // An attestation carries the name it was made under. If the body
+            // now names someone else in that role, one of the two was edited.
+            let named = match a.capacity {
+                Capacity::DeviceCustodian => &self.certificate.custodian,
+                Capacity::IndependentExpert => &self.certificate.expert,
+            };
+            if a.signer_name != named.full_name {
+                problems.push(format!(
+                    "the attestation made as {} was made by {}, but the certificate names {} in that role",
+                    a.capacity.label(),
+                    a.signer_name,
+                    named.full_name
+                ));
+            }
+        }
+        // Section 63(4) is a rule about who signed, not only about whether each
+        // signature verifies on its own. It is enforced at issue time, and it
+        // is enforced again here: without this, a certificate stripped down to
+        // one attestation — or attested twice by one person — reads as intact,
+        // and the checker would accept what the issuer would have refused.
+        if !self.attestations.is_empty() {
+            for capacity in [Capacity::DeviceCustodian, Capacity::IndependentExpert] {
+                let n = self
+                    .attestations
+                    .iter()
+                    .filter(|a| a.capacity == capacity)
+                    .count();
+                if n != 1 {
+                    problems.push(format!(
+                        "Section 63(4) requires exactly one attestation as {}; this certificate carries {n}",
+                        capacity.label()
+                    ));
+                }
+            }
+            let keys: std::collections::BTreeSet<&str> = self
+                .attestations
+                .iter()
+                .map(|a| a.public_key.as_str())
+                .collect();
+            if keys.len() != self.attestations.len() {
+                problems.push(
+                    "one key made more than one attestation; that is one person attesting twice, not the two people Section 63(4) requires"
+                        .into(),
+                );
             }
         }
         problems
@@ -1037,6 +1093,44 @@ mod tests {
         let problems = edited.check();
         assert!(problems.iter().any(|p| p.contains("recorded digest")));
         assert_eq!(problems.len(), 3);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn the_checker_holds_attestations_to_the_rule_the_issuer_applied() {
+        use ed25519_dalek::SigningKey;
+        let root = container("attest-shape");
+        let custodian = SigningKey::from_bytes(&[7u8; 32]);
+        let expert = SigningKey::from_bytes(&[9u8; 32]);
+
+        // Dropping one signer leaves a certificate whose remaining signature is
+        // perfectly good and which Section 63(4) still does not satisfy.
+        let mut alone = issue(&root, &request()).unwrap();
+        alone.attest(Capacity::DeviceCustodian, &custodian);
+        let problems = alone.check();
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("Independent expert"));
+
+        // One person holding one key cannot be both signers.
+        let mut twice = issue(&root, &request()).unwrap();
+        twice.attest(Capacity::DeviceCustodian, &custodian);
+        twice.attest(Capacity::IndependentExpert, &custodian);
+        assert!(twice
+            .check()
+            .iter()
+            .any(|p| p.contains("one person attesting twice")));
+
+        // Renaming a signer after they attested is an edit the digest catches,
+        // and the name on the attestation catches it a second time.
+        let mut renamed = issue(&root, &request()).unwrap();
+        renamed.attest(Capacity::DeviceCustodian, &custodian);
+        renamed.attest(Capacity::IndependentExpert, &expert);
+        renamed.certificate.expert.full_name = "Someone Else".into();
+        assert!(renamed
+            .check()
+            .iter()
+            .any(|p| p.contains("the certificate names Someone Else in that role")));
+
         std::fs::remove_dir_all(&root).unwrap();
     }
 }
