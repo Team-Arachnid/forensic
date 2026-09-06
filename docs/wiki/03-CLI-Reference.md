@@ -8,7 +8,7 @@
 
 [← Core Concepts](02-Concepts.md) · [Home](Home.md) · [Next: Terminal UI →](04-TUI-Guide.md)
 
-Complete reference for `arachnid-core` 0.1.0. Every flag, every default, with
+Complete reference for `arachnid-core` 0.1.1. Every flag, every default, with
 worked examples and real output.
 
 > This page covers the **triage** CLI. For `arachnid-sanitize`, the suite's

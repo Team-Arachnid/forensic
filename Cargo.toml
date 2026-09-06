@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
@@ -30,16 +30,16 @@ sha2 = "0.11"
 time = { version = "0.3", features = ["formatting", "parsing"] }
 tracing = "0.1"
 
-arachnid-collect = { path = "crates/arachnid-collect", version = "0.1.0" }
-arachnid-core-cli = { path = "crates/arachnid-core-cli", version = "0.1.0" }
-arachnid-core-tui = { path = "crates/arachnid-core-tui", version = "0.1.0" }
-arachnid-evidence = { path = "crates/arachnid-evidence", version = "0.1.0" }
-arachnid-netcap = { path = "crates/arachnid-netcap", version = "0.1.0" }
-arachnid-recover-cli = { path = "crates/arachnid-recover-cli", version = "0.1.0" }
-arachnid-recover-core = { path = "crates/arachnid-recover-core", version = "0.1.0" }
-arachnid-report = { path = "crates/arachnid-report", version = "0.1.0" }
-arachnid-sanitize-cli = { path = "crates/arachnid-sanitize-cli", version = "0.1.0" }
-arachnid-sanitize-core = { path = "crates/arachnid-sanitize-core", version = "0.1.0" }
+arachnid-collect = { path = "crates/arachnid-collect", version = "0.1.1" }
+arachnid-core-cli = { path = "crates/arachnid-core-cli", version = "0.1.1" }
+arachnid-core-tui = { path = "crates/arachnid-core-tui", version = "0.1.1" }
+arachnid-evidence = { path = "crates/arachnid-evidence", version = "0.1.1" }
+arachnid-netcap = { path = "crates/arachnid-netcap", version = "0.1.1" }
+arachnid-recover-cli = { path = "crates/arachnid-recover-cli", version = "0.1.1" }
+arachnid-recover-core = { path = "crates/arachnid-recover-core", version = "0.1.1" }
+arachnid-report = { path = "crates/arachnid-report", version = "0.1.1" }
+arachnid-sanitize-cli = { path = "crates/arachnid-sanitize-cli", version = "0.1.1" }
+arachnid-sanitize-core = { path = "crates/arachnid-sanitize-core", version = "0.1.1" }
 
 # Single static binary per platform; see README "Build".
 [profile.release]
