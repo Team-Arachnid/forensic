@@ -8,7 +8,7 @@
 
 [← Core Concepts](02-Concepts.md) · [Home](Home.md) · [Next: Terminal UI →](04-TUI-Guide.md)
 
-Complete reference for `arachnid-core` 0.1.0. Every flag, every default, with
+Complete reference for `arachnid-core` 0.1.1. Every flag, every default, with
 worked examples and real output.
 
 > This page covers the **triage** CLI. For `arachnid-sanitize`, the suite's
@@ -703,6 +703,14 @@ It cannot check that the second signer is genuinely *independent*, that the
 device was in regular use, or that information was fed in in the ordinary
 course. Those are human assertions, which is why `--affirm-conditions` exists
 instead of the tool asserting them for you.
+
+Nor can re-checking a certificate later prove the attestations were made by the
+right people. A certificate is a self-contained document, so anyone who can
+rewrite one can rewrite its body, its digest and its attestations together with
+keys of their own; that forgery is internally consistent by construction.
+Authenticity rests on the keys. The hex public key of each attestation is
+printed on the certificate and carried in the JSON precisely so it can be
+compared against the key that signer is independently known to hold.
 
 ### Example
 
