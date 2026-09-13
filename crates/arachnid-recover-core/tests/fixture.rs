@@ -55,6 +55,7 @@ fn regenerate_fixtures() {
         carve_types: carve::default_types(),
         deleted_only: false,
         operator: "sample-operator@lab".into(),
+        ..Default::default()
     };
     let mut results = scan(
         &mut source,

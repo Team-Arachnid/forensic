@@ -54,19 +54,22 @@
 pub mod apfs;
 pub mod artifacts;
 pub mod carve;
+pub mod deep;
 pub mod export;
 pub mod ext4;
 pub mod ntfs;
 pub mod results;
 pub mod source;
+pub mod vss;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
 
+pub use deep::{DeepOptions, DeepReport, Depth};
 pub use results::{
-    Check, Confidence, Extent, FilesystemReport, Method, Rationale, RecoveredFile, ScanResults,
-    SCHEMA_VERSION,
+    Check, Confidence, Content, Extent, FilesystemReport, Method, Rationale, RecoveredFile,
+    ScanResults, SCHEMA_VERSION,
 };
 pub use source::Source;
 
@@ -93,6 +96,11 @@ pub struct ScanOptions {
     /// deleted. On by default: live files are readable through the OS, and a
     /// scan that returns every file on the volume buries the ones that matter.
     pub deleted_only: bool,
+    /// How hard to look. `Deep` adds everything in [`deep`], costs hours rather
+    /// than minutes, and is never the default.
+    pub depth: Depth,
+    /// Which deep techniques run. Ignored unless `depth` is `Deep`.
+    pub deep: DeepOptions,
     pub operator: String,
 }
 
@@ -103,6 +111,8 @@ impl Default for ScanOptions {
             carve_pass: false,
             carve_types: carve::default_types(),
             deleted_only: true,
+            depth: Depth::Standard,
+            deep: DeepOptions::default(),
             operator: default_operator(),
         }
     }
@@ -112,7 +122,7 @@ impl Default for ScanOptions {
 #[derive(Default)]
 pub struct Progress {
     /// Which phase is running, for a front end to label: `0` idle, `1`
-    /// filesystem, `2` carving, `3` done.
+    /// filesystem, `2` carving, `3` done, `4` the deep techniques.
     pub phase: std::sync::atomic::AtomicU8,
     pub filesystems_found: std::sync::atomic::AtomicU64,
     pub files_found: std::sync::atomic::AtomicU64,
@@ -125,6 +135,7 @@ impl Progress {
             1 => "parsing filesystem metadata",
             2 => "carving raw sectors",
             3 => "done",
+            4 => "mining journals, snapshots and slack space",
             _ => "starting",
         }
     }
@@ -140,6 +151,32 @@ pub fn scan(
     options: &ScanOptions,
     progress: &Progress,
     cancel: &AtomicBool,
+) -> Result<ScanResults> {
+    resume(source, options, progress, cancel, None)
+}
+
+/// Names of the two stages a scan can be resumed at the boundary of.
+const STAGE_FILESYSTEM: &str = "filesystem";
+const STAGE_CARVE: &str = "carve";
+
+/// Run a scan, keeping what an earlier cancelled run of the same scan finished.
+///
+/// A deep scan of a large drive runs for hours, and an operator who has to stop
+/// one should not lose the four hours of journal mining because the carving pass
+/// had another two to go. Each of the two stages is either done or not; a stage
+/// that was interrupted part way is re-run from the start rather than continued
+/// from the middle, because a half-finished carve has no record of where it
+/// stopped that could be trusted.
+///
+/// `previous` is ignored unless it fingerprints to the same media. Reusing one
+/// image's results against another would put offsets from one drive into the
+/// results of a second, which is the one failure mode this module cannot allow.
+pub fn resume(
+    source: &mut dyn Source,
+    options: &ScanOptions,
+    progress: &Progress,
+    cancel: &AtomicBool,
+    previous: Option<&ScanResults>,
 ) -> Result<ScanResults> {
     let started = arachnid_evidence::now_utc();
     let mut filesystems = Vec::new();
@@ -161,52 +198,119 @@ pub fn scan(
         }
     };
 
+    // A resume is only a resume of the same media. Anything else is a new scan
+    // that happens to have been pointed at an old index.
+    let previous = previous.filter(|p| {
+        !p.source_fingerprint.is_empty() && p.source_fingerprint == source_fingerprint
+    });
+    let finished = |stage: &str| {
+        previous.is_some_and(|p| {
+            p.deep
+                .as_ref()
+                .is_some_and(|d| d.completed.iter().any(|c| c == stage))
+        })
+    };
+
+    let deep_on = options.depth.is_deep();
+    let mut report = DeepReport {
+        techniques: options
+            .deep
+            .techniques()
+            .iter()
+            .map(|t| t.to_string())
+            .collect(),
+        completed: Vec::new(),
+        advisories: if deep_on {
+            deep::advisories(source, &options.deep)
+        } else {
+            Vec::new()
+        },
+        notes: Vec::new(),
+    };
+
+    // Slack space is the tail of a cluster a *live* file still holds, so the
+    // filesystem pass has to see live files even when the operator only wants
+    // deleted ones. They are dropped again below, once their slack has been
+    // taken: asking for more thorough work should never quietly change what the
+    // results contain.
+    let want_slack = deep_on && options.deep.slack_space;
+    let pass_deleted_only = options.deleted_only && !want_slack;
+
     if options.filesystem_pass {
-        progress.phase.store(1, Ordering::Relaxed);
-        for offset in PROBE_OFFSETS {
-            if offset >= source.size() || cancel.load(Ordering::Relaxed) {
-                continue;
-            }
-            match identify(source, offset, options.deleted_only) {
-                Ok(Some((report, mut found))) => {
-                    progress.filesystems_found.fetch_add(1, Ordering::Relaxed);
-                    progress
-                        .files_found
-                        .fetch_add(found.len() as u64, Ordering::Relaxed);
-                    filesystems.push(report);
-                    files.append(&mut found);
+        if finished(STAGE_FILESYSTEM) {
+            let p = previous.expect("finished() is false without a previous scan");
+            filesystems.extend(p.filesystems.iter().cloned());
+            files.extend(p.files.iter().filter(|f| !f.method.is_carved()).cloned());
+            report
+                .notes
+                .push(format!("resumed: the {STAGE_FILESYSTEM} stage was already complete"));
+        } else {
+            progress.phase.store(1, Ordering::Relaxed);
+            for offset in PROBE_OFFSETS {
+                if offset >= source.size() || cancel.load(Ordering::Relaxed) {
+                    continue;
                 }
-                Ok(None) => {}
-                Err(e) => problems.push(format!("filesystem pass at offset {offset}: {e:#}")),
+                let deep = deep_on.then_some(&options.deep);
+                match identify(source, offset, pass_deleted_only, deep, progress, cancel) {
+                    Ok(Some(mut found)) => {
+                        progress.filesystems_found.fetch_add(1, Ordering::Relaxed);
+                        progress
+                            .files_found
+                            .fetch_add(found.files.len() as u64, Ordering::Relaxed);
+                        report.notes.append(&mut found.deep_notes);
+                        filesystems.push(found.report);
+                        files.append(&mut found.files);
+                    }
+                    Ok(None) => {}
+                    Err(e) => problems.push(format!("filesystem pass at offset {offset}: {e:#}")),
+                }
+            }
+            if filesystems.is_empty() {
+                problems.push(
+                    "no NTFS, ext4 or APFS filesystem was found at any probed offset. If this is \
+                     a whole-disk image with an unusual partition layout, image the partition \
+                     itself, or run the carving pass, which needs no filesystem."
+                        .into(),
+                );
+            }
+            // Live files were only ever read so their slack could be taken.
+            if want_slack && options.deleted_only {
+                files.retain(|f| f.deleted || f.content != Content::Full);
+            }
+            // Recovering the same file twice — once per probe offset on a source
+            // where two probes landed on the same volume — would double every
+            // count an analyst reports.
+            files.sort_by(|a, b| a.id.cmp(&b.id));
+            files.dedup_by(|a, b| a.id == b.id);
+            if !cancel.load(Ordering::Relaxed) {
+                report.completed.push(STAGE_FILESYSTEM.into());
             }
         }
-        if filesystems.is_empty() {
-            problems.push(
-                "no NTFS, ext4 or APFS filesystem was found at any probed offset. If this is a \
-                 whole-disk image with an unusual partition layout, image the partition itself, \
-                 or run the carving pass, which needs no filesystem."
-                    .into(),
-            );
-        }
-        // Recovering the same file twice — once per probe offset on a source
-        // where two probes landed on the same volume — would double every count
-        // an analyst reports.
-        files.sort_by(|a, b| a.id.cmp(&b.id));
-        files.dedup_by(|a, b| a.id == b.id);
     }
 
-    if options.carve_pass && !cancel.load(Ordering::Relaxed) {
-        progress.phase.store(2, Ordering::Relaxed);
-        match carve::carve(source, &options.carve_types, &progress.carve, cancel) {
-            Ok(carved) => {
-                progress
-                    .files_found
-                    .fetch_add(carved.len() as u64, Ordering::Relaxed);
-                // Carved ids are assigned by position within the carve pass, so
-                // they cannot collide with the filesystem pass's.
-                files.extend(carved);
+    if options.carve_pass {
+        if finished(STAGE_CARVE) {
+            let p = previous.expect("finished() is false without a previous scan");
+            files.extend(p.files.iter().filter(|f| f.method.is_carved()).cloned());
+            report
+                .notes
+                .push(format!("resumed: the {STAGE_CARVE} stage was already complete"));
+        } else if !cancel.load(Ordering::Relaxed) {
+            progress.phase.store(2, Ordering::Relaxed);
+            match carve::carve(source, &options.carve_types, &progress.carve, cancel) {
+                Ok(carved) => {
+                    progress
+                        .files_found
+                        .fetch_add(carved.len() as u64, Ordering::Relaxed);
+                    // Carved ids are assigned by position within the carve pass,
+                    // so they cannot collide with the filesystem pass's.
+                    files.extend(carved);
+                    if !cancel.load(Ordering::Relaxed) {
+                        report.completed.push(STAGE_CARVE.into());
+                    }
+                }
+                Err(e) => problems.push(format!("carving pass: {e:#}")),
             }
-            Err(e) => problems.push(format!("carving pass: {e:#}")),
         }
     }
 
@@ -218,10 +322,18 @@ pub fn scan(
     }
 
     if cancel.load(Ordering::Relaxed) {
-        problems.push(
-            "the scan was cancelled; results cover only the part of the source that was read"
-                .into(),
-        );
+        problems.push(format!(
+            "the scan was cancelled; results cover only the part of the source that was read.{}",
+            if report.completed.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " Completed stage(s): {}. Re-running this scan with --resume against this \
+                     results file will keep them and continue.",
+                    report.completed.join(", ")
+                )
+            }
+        ));
     }
     progress.phase.store(3, Ordering::Relaxed);
 
@@ -237,6 +349,8 @@ pub fn scan(
         operator: options.operator.clone(),
         filesystem_pass: options.filesystem_pass,
         carve_pass: options.carve_pass,
+        depth: options.depth.label().into(),
+        deep: deep_on.then_some(report),
         carve_types: if options.carve_pass {
             options.carve_types.clone()
         } else {
@@ -248,42 +362,120 @@ pub fn scan(
     })
 }
 
-type Identified = (FilesystemReport, Vec<RecoveredFile>);
+struct Identified {
+    report: FilesystemReport,
+    files: Vec<RecoveredFile>,
+    /// What the deep techniques did on this volume, for the scan-level report.
+    deep_notes: Vec<String>,
+}
 
 /// Identify whatever filesystem is at `offset` and recover from it.
+///
+/// `deep` is `Some` only in deep mode, and each technique it names runs against
+/// the filesystem that owns it: the NTFS journals and shadow copies against
+/// NTFS, the backup superblocks against ext, slack space against both.
 fn identify(
     source: &mut dyn Source,
     offset: u64,
     deleted_only: bool,
+    deep: Option<&DeepOptions>,
+    progress: &Progress,
+    cancel: &AtomicBool,
 ) -> Result<Option<Identified>> {
     if let Some(geometry) = ntfs::probe(source, offset)? {
         tracing::info!(offset, "NTFS volume identified");
         let scan = ntfs::recover(source, &geometry, deleted_only)?;
-        return Ok(Some((
-            FilesystemReport {
+        let mut files = scan.files;
+        let mut deep_notes = Vec::new();
+
+        if let Some(d) = deep {
+            progress.phase.store(4, Ordering::Relaxed);
+            if d.journal_mining && !cancel.load(Ordering::Relaxed) {
+                match ntfs::mine_journals(source, &geometry, cancel) {
+                    Ok((mut found, notes)) => {
+                        deep_notes.extend(notes);
+                        files.append(&mut found);
+                    }
+                    Err(e) => deep_notes.push(format!("journal mining did not run: {e:#}")),
+                }
+            }
+            if d.shadow_copies && !cancel.load(Ordering::Relaxed) {
+                match vss::recover(source, offset) {
+                    Ok((mut found, notes)) => {
+                        deep_notes.extend(notes);
+                        files.append(&mut found);
+                    }
+                    Err(e) => deep_notes.push(format!("shadow copies not enumerated: {e:#}")),
+                }
+            }
+            if d.backup_metadata && !cancel.load(Ordering::Relaxed) {
+                match ntfs::backup_metadata(source, &geometry) {
+                    Ok((mut found, notes)) => {
+                        deep_notes.extend(notes);
+                        files.append(&mut found);
+                    }
+                    Err(e) => deep_notes.push(format!("backup metadata not read: {e:#}")),
+                }
+            }
+            if d.slack_space && !cancel.load(Ordering::Relaxed) {
+                let (mut found, note) =
+                    deep::slack_space(source, &files, geometry.cluster_size(), cancel);
+                deep_notes.push(note);
+                files.append(&mut found);
+            }
+        }
+
+        return Ok(Some(Identified {
+            report: FilesystemReport {
                 kind: "ntfs".into(),
                 offset,
-                entries: scan.files.len() as u64,
+                entries: files.len() as u64,
                 unsupported: scan.unsupported,
                 notes: scan.notes,
             },
-            scan.files,
-        )));
+            files,
+            deep_notes,
+        }));
     }
 
     if let Some(sb) = ext4::probe(source, offset)? {
         tracing::info!(offset, "ext4 volume identified");
-        let scan = ext4::recover(source, &sb, deleted_only)?;
-        return Ok(Some((
-            FilesystemReport {
+        let scan = ext4::recover(source, &sb, deleted_only, deep.is_some())?;
+        let mut files = scan.files;
+        let mut deep_notes = Vec::new();
+
+        if let Some(d) = deep {
+            progress.phase.store(4, Ordering::Relaxed);
+            if d.backup_metadata && !cancel.load(Ordering::Relaxed) {
+                let (mut found, notes) = ext4::backup_superblocks(source, &sb);
+                deep_notes.extend(notes);
+                files.append(&mut found);
+            }
+            if d.slack_space && !cancel.load(Ordering::Relaxed) {
+                let (mut found, note) = deep::slack_space(source, &files, sb.block_size, cancel);
+                deep_notes.push(note);
+                files.append(&mut found);
+            }
+            if d.shadow_copies {
+                deep_notes.push(
+                    "shadow copies: not applicable to ext4 — Volume Shadow Copy is an NTFS \
+                     feature, and LVM or Btrfs snapshots are outside this volume"
+                        .into(),
+                );
+            }
+        }
+
+        return Ok(Some(Identified {
+            report: FilesystemReport {
                 kind: "ext4".into(),
                 offset,
-                entries: scan.files.len() as u64,
+                entries: files.len() as u64,
                 unsupported: scan.unsupported,
                 notes: scan.notes,
             },
-            scan.files,
-        )));
+            files,
+            deep_notes,
+        }));
     }
 
     if let Some(container) = apfs::probe(source, offset)? {
@@ -291,16 +483,25 @@ fn identify(
         let (unsupported, notes) = apfs::report(&container);
         // Deliberately no files. See the module docs: an empty result set with
         // an explicit "not implemented" beats one that reads as "nothing here".
-        return Ok(Some((
-            FilesystemReport {
+        return Ok(Some(Identified {
+            report: FilesystemReport {
                 kind: "apfs".into(),
                 offset,
                 entries: 0,
                 unsupported,
                 notes,
             },
-            Vec::new(),
-        )));
+            files: Vec::new(),
+            deep_notes: match deep {
+                Some(_) => vec![
+                    "deep techniques: none ran on the APFS container — this build does not walk \
+                     an APFS tree, so there is no file list to take slack from and no journal it \
+                     can read"
+                        .into(),
+                ],
+                None => Vec::new(),
+            },
+        }));
     }
 
     Ok(None)

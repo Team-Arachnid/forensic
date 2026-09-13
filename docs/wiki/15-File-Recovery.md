@@ -24,6 +24,7 @@ its source, like Core and unlike Sanitize. It is also reachable as screen `8` in
 - [Carved file types](#carved-file-types)
 - [Call logs, browser history and system logs](#call-logs-browser-history-and-system-logs)
 - [Confidence scoring](#confidence-scoring)
+- [Deep scan](#deep-scan)
 - [CLI reference](#cli-reference)
 - [Export and chain of custody](#export-and-chain-of-custody)
 - [The safety rails](#the-safety-rails)
@@ -337,6 +338,96 @@ Checks currently emitted: `mft_entry_in_use` · `run_list_complete` ·
 
 ---
 
+## Deep scan
+
+`--depth deep` keeps everything the standard scan does and adds five more
+places to look. It exists for one question — *how far back does this drive
+actually go* — and it answers that question by exhausting the places old data
+can still be, then saying what was there, including nothing.
+
+It is slower by roughly 2.5×, which on a large drive means hours rather than
+minutes. The estimate is printed before the scan starts, not after it:
+
+```
+Scanning \\.\PhysicalDrive2 (500107862016 bytes)…
+Depth: deep. Estimated 3h 27m — a rough figure from an assumed read rate; set
+ARACHNID_SCAN_MBPS to what this rig actually sees to sharpen it.
+Techniques: journal mining, shadow copies, backup metadata, slack space, expanded signatures.
+
+[trim] the media reports TRIM/discard support. On an SSD with TRIM enabled the
+controller has been told which blocks are free and is under no obligation to
+return their old contents. Deleted data from before the last idle period is
+frequently not there to be found, by any tool.
+
+Nothing here recovers overwritten data. A deep scan exhausts the places old
+data can still be and reports what is there, including nothing.
+```
+
+### The five techniques
+
+| Technique | Reads | Recovers |
+|---|---|---|
+| **journal mining** | NTFS `$UsnJrnl` and `$LogFile`, ext4 `jbd2` | records that a file existed — name, times, operations — after its MFT record or inode was reused |
+| **shadow copies** | the NTFS Volume Shadow Copy store | the snapshots on the volume, with the dates they were taken |
+| **backup metadata** | the NTFS backup boot sector and `$MFTMirr`, ext4 backup superblocks | volume geometry and early MFT records where the primaries are damaged, and the ext4 superblock's own `mkfs` and mount history |
+| **slack space** | the tail of each cluster a live file does not fill | remnants of whatever previously occupied those clusters |
+| **expanded signatures** | the same sectors the standard carver reads | nine further formats — `doc`, `gif`, `bmp`, `tif`, `7z`, `rar`, `cab`, `evt`, `pst` — which is where disproportionately old material lives |
+
+`--hpa-dco` is a sixth, off by default and separate: a read-only probe for a
+Host Protected Area or Device Configuration Overlay at the end of the drive. A
+hidden area is unusual enough that looking for one should be a decision rather
+than a side effect of picking a depth.
+
+### Three kinds of result, not one
+
+A deep scan returns things a standard scan cannot, and they are not all files.
+Every result carries a `content` field saying which it is, and the field drives
+what `export` does with it:
+
+| `content` | What it is | On export |
+|---|---|---|
+| `full` | the file's data, as far as the media gave it back | written out normally |
+| `metadata_only` | a record that a file existed — a journal entry, a snapshot, a backup superblock — with none of its data | **not written.** A zero-byte file under a name from a journal record would put a file in an evidence container that was never recovered. The record stays in `results.json` |
+| `fragment` | real bytes off the media belonging to some file, with no header, no end and no name | written under `slack/`, kept apart from the carved files so nothing reads it as a recovered file |
+
+### Dates, and where they came from
+
+Deep results are frequently dated from somewhere other than a filesystem
+record, so every dated result also carries a `timestamp_source` saying which —
+the filesystem record, a journal entry, a snapshot, or the file's own embedded
+metadata. `list-results --oldest-first` is the view built on it:
+
+```bash
+arachnid-recover list-results --input ./rec/results.json --oldest-first
+```
+
+Results that carry no establishable timestamp are left out of that view, on the
+grounds that an undated result is not the oldest one. A timestamp that parses
+to a year outside 1990..now+1 is treated as a parse artifact and dropped rather
+than reported — a wrong offset in a structure parser turns arbitrary bytes into
+a date in 1723, and a date like that becomes the answer to "how far back does
+this go".
+
+### Resuming
+
+A deep scan that runs for hours should not lose four hours of journal mining
+because the carving pass had two to go. Ctrl-C records which stages finished,
+and `--resume` continues from there:
+
+```bash
+arachnid-recover scan -i \\.\PhysicalDrive2 --depth deep -o ./rec --carve-pass
+# ^C after the filesystem stage
+arachnid-recover scan -i \\.\PhysicalDrive2 --depth deep -o ./rec --carve-pass --resume
+```
+
+Resume works at stage boundaries only. A stage interrupted part way is re-run
+from the start, because a half-finished carve has no record of where it stopped
+that could be trusted. The previous results are used only if they fingerprint
+to the same media — reusing one image's results against another would put
+offsets from one drive into the results of a second.
+
+---
+
 ## CLI reference
 
 The examples below run against the synthetic images checked into
@@ -392,8 +483,11 @@ Nothing has been written to the source. To write the recovered files out:
 | `--filesystem-pass` | on by default; accepted so a scripted run can state its intent |
 | `--no-filesystem-pass` | skip it. `carve` is the shorter way to say the same thing |
 | `--carve-pass` | **adds** carving to the filesystem pass; does not replace it |
-| `--carve-types` | comma-separated. Default: every type except `txt` |
+| `--carve-types` | comma-separated. Default: the common types; `--depth deep` adds the legacy ones |
 | `--include-live` | also report files the filesystem still considers live. Off by default: live files are readable through the OS, and including them buries the deleted ones |
+| `--depth` | `standard` (default) or `deep`. See [Deep scan](#deep-scan) |
+| `--hpa-dco` | within a deep scan, also probe for a Host Protected Area or Device Configuration Overlay. Read-only, and off unless asked for |
+| `--resume` | continue a cancelled scan, keeping the stages that finished. Reads the `results.json` already in `--output` |
 | `--operator` | identity recorded in the results |
 
 ### `carve`
@@ -431,6 +525,7 @@ passes, visible in one table.
 | `--confidence` | keep only these levels: `high`, `medium`, `low` |
 | `--type` | keep only these file types or artifact classes: `pdf`, `sqlite` … or `call-log`, `browser-history`, `system-log` |
 | `--detail <ID>` | print the full scoring rationale for one result |
+| `--oldest-first` | order by timestamp, oldest first, showing where each timestamp came from. Undated results are left out |
 
 ### `export`
 
@@ -582,7 +677,10 @@ Screen `8` in `arachnid-tui`. Five steps, in order:
    enumeration Sanitize uses, opened without write access), or an artifact out
    of a prior Core evidence container.
 2. **Configuration** — which passes, which carve types, whether to include live
-   files, and where the results index goes.
+   files, whether to run a [deep scan](#deep-scan), and where the results index
+   goes. Turning deep scan on reveals one further toggle, the HPA/DCO check, and
+   lists the techniques that will run; turning it off hides the toggle again and
+   clears it, because a toggle that does nothing is worse than an absent one.
 3. **Progress** — phase, filesystems found, files found, and a carving progress
    bar. Runs on its own thread and **survives navigating away**: carving a full
    disk is an hours-long read.
@@ -595,7 +693,7 @@ Screen `8` in `arachnid-tui`. Five steps, in order:
 |---|---|
 | `j` / `k` | move |
 | `Enter` | select, or edit a field |
-| `Space` | toggle a pass or a carve type |
+| `Space` | toggle a pass, the deep scan, or a carve type |
 | `r` | reload the device list, or re-read a container's artifact list |
 | `s` | start the scan |
 | `c` / `t` | filter results by confidence / type |
@@ -651,8 +749,13 @@ rather than hand-written, so it cannot drift from real output — lives at
 
 Top level: `schema_version` · `tool` · `tool_version` · `source` ·
 `source_size` · `source_fingerprint` · `started_utc` · `finished_utc` ·
-`operator` · `filesystem_pass` · `carve_pass` · `carve_types` · `filesystems` ·
-`files` · `problems`.
+`operator` · `filesystem_pass` · `carve_pass` · `depth` · `deep` ·
+`carve_types` · `filesystems` · `files` · `problems`.
+
+`depth` is `standard` or `deep`. `deep` is present only on a deep scan and
+carries `techniques` (what was asked for) · `completed` (the stages `--resume`
+can skip) · `advisories` (what the media says about its own recoverability) ·
+`notes` (one line per technique per volume).
 
 `source_fingerprint` identifies the media the offsets in `files` are relative
 to; see [The safety rails](#the-safety-rails). It defaults to empty so an older
@@ -662,7 +765,14 @@ did not run, never that it passed.
 Each entry in `files`: `id` · `method` · `original_path` (absent for carved
 results — it does not exist, and none is invented) · `export_name` ·
 `file_type` · `size` · `extents` · `created_utc` / `modified_utc` /
-`accessed_utc` · `deleted` · `encrypted` · `rationale`.
+`accessed_utc` · `deleted` · `encrypted` · `artifact` · `content` ·
+`timestamp_source` · `rationale`.
+
+`content` is `full`, `metadata_only` or `fragment`, and is omitted when it is
+`full`; `timestamp_source` names where the times came from and is absent on a
+result that carries none. Both default on read, so an index written before the
+deep scan existed still loads — and loads as what it was, full content. See
+[Deep scan](#deep-scan).
 
 Each entry in `filesystems`: `kind` · `offset` · `entries` · `unsupported` ·
 `notes`.

@@ -21,7 +21,7 @@ use anyhow::{Context, Result};
 use arachnid_evidence::Container;
 use sha2::{Digest, Sha256};
 
-use crate::results::{Confidence, RecoveredFile, ScanResults};
+use crate::results::{Confidence, Content, RecoveredFile, ScanResults};
 use crate::source::Source;
 
 /// Bytes moved per read while streaming a recovered file to disk. A multi-
@@ -203,6 +203,29 @@ pub fn export(
 
 /// Where a file goes inside the container's artifact tree.
 fn placement(file: &RecoveredFile) -> std::result::Result<String, String> {
+    match file.content {
+        // There is no file to write. Creating a zero-byte one under the name
+        // from a journal record would put a file in an evidence container that
+        // was never recovered, which is the one thing this module must not do.
+        Content::MetadataOnly => {
+            return Err(format!(
+                "{} is a metadata-only result ({}): it records that a file existed, and holds \
+                 none of its data. The record is in results.json inside this container; there is \
+                 nothing to write out as a file.",
+                file.id,
+                file.method.label()
+            ))
+        }
+        // A remnant is real bytes and is exported — kept apart from the carved
+        // files so nothing reads it as a recovered file.
+        Content::Fragment => {
+            return Ok(format!(
+                "slack/{}",
+                sanitize_component(&file.export_name)
+            ))
+        }
+        Content::Full => {}
+    }
     if file.method.is_carved() {
         // Carved files are flat and named after where they were found. Nothing
         // about a carved file justifies a directory.

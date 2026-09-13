@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 
-use crate::results::{Check, Confidence, Extent, Method, Rationale, RecoveredFile};
+use crate::results::{Check, Confidence, Content, Extent, Method, Rationale, RecoveredFile};
 use crate::source::Source;
 
 /// Bytes read per pass. Large enough that the per-read overhead disappears,
@@ -139,6 +139,84 @@ const SIGNATURES: &[Signature] = &[
         terminator: Terminator::Declared(journal_length, "the journal header's arena size"),
         max_size: 1024 * 1024 * 1024,
     },
+    // ---- from here down, the deep scan's set -------------------------------
+    //
+    // Older material is disproportionately in formats that have since fallen
+    // out of everyday use, so a signature list built around what people create
+    // today works against the one thing a deep scan is for. These are the
+    // formats a drive with a long history actually holds: the pre-XML Office
+    // documents, the archive formats that predate zip's dominance, the database
+    // and mail-store files, and the image formats that came before JPEG and PNG
+    // took over.
+    Signature {
+        name: "doc",
+        // OLE2 compound file: .doc, .xls, .ppt and .msg all share it.
+        header: &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1],
+        header_at: 0,
+        terminator: Terminator::Declared(ole2_length, "the OLE2 header's FAT sector count"),
+        max_size: 128 * 1024 * 1024,
+    },
+    Signature {
+        name: "gif",
+        header: b"GIF8",
+        header_at: 0,
+        // The trailer byte, which every conforming GIF ends with.
+        terminator: Terminator::Footer(&[0x3B]),
+        max_size: 64 * 1024 * 1024,
+    },
+    Signature {
+        name: "bmp",
+        header: b"BM",
+        header_at: 0,
+        terminator: Terminator::Declared(bmp_length, "the BMP header's declared file size"),
+        max_size: 256 * 1024 * 1024,
+    },
+    Signature {
+        name: "tif",
+        header: &[b'I', b'I', 0x2A, 0x00],
+        header_at: 0,
+        terminator: Terminator::Declared(tiff_length, "the TIFF image file directory chain"),
+        max_size: 512 * 1024 * 1024,
+    },
+    Signature {
+        name: "7z",
+        header: &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C],
+        header_at: 0,
+        terminator: Terminator::Declared(sevenz_length, "the 7z header's next-header pointer"),
+        max_size: 2 * 1024 * 1024 * 1024,
+    },
+    Signature {
+        name: "rar",
+        header: &[b'R', b'a', b'r', b'!', 0x1A, 0x07, 0x00],
+        header_at: 0,
+        // RAR 4's end-of-archive block, which closes a complete archive.
+        terminator: Terminator::Footer(&[0xC4, 0x3D, 0x7B, 0x00, 0x40, 0x07, 0x00]),
+        max_size: 2 * 1024 * 1024 * 1024,
+    },
+    Signature {
+        name: "cab",
+        header: b"MSCF",
+        header_at: 0,
+        terminator: Terminator::Declared(cab_length, "the cabinet header's total size"),
+        max_size: 1024 * 1024 * 1024,
+    },
+    Signature {
+        name: "evt",
+        // The pre-Vista Windows event log, still the format on anything that
+        // has not been reinstalled since XP or Server 2003.
+        header: b"LfLe",
+        header_at: 4,
+        terminator: Terminator::Declared(evt_length, "the EVT header's end-of-file offset"),
+        max_size: 512 * 1024 * 1024,
+    },
+    Signature {
+        name: "pst",
+        // Outlook personal folders, and .ost offline stores, share it.
+        header: b"!BDN",
+        header_at: 0,
+        terminator: Terminator::Declared(pst_length, "the PST header's end-of-file pointer"),
+        max_size: 64 * 1024 * 1024 * 1024,
+    },
     Signature {
         name: "txt",
         header: &[],
@@ -148,20 +226,43 @@ const SIGNATURES: &[Signature] = &[
     },
 ];
 
+/// Types the deep scan adds to the standard set.
+///
+/// Kept as a name list rather than a flag on every signature: this is the only
+/// place the split matters, and one list is easier to read than a column of
+/// `deep_only: false`.
+const DEEP_ONLY: &[&str] = &["doc", "gif", "bmp", "tif", "7z", "rar", "cab", "evt", "pst"];
+
 /// Every type name the carver can be asked for, for `--help` and the TUI's
 /// type picker.
 pub fn known_types() -> Vec<&'static str> {
     SIGNATURES.iter().map(|s| s.name).collect()
 }
 
-/// The default set: everything except `txt`, which on a real volume matches
-/// enough log fragments and string tables to bury the rest of the results.
+/// The standard scan's set: the common types, without `txt` — which on a real
+/// volume matches enough log fragments and string tables to bury the rest of
+/// the results — and without the legacy formats the deep scan adds.
 pub fn default_types() -> Vec<String> {
+    SIGNATURES
+        .iter()
+        .filter(|s| s.name != "txt" && !DEEP_ONLY.contains(&s.name))
+        .map(|s| s.name.to_string())
+        .collect()
+}
+
+/// The deep scan's set: every signature except `txt`.
+pub fn deep_types() -> Vec<String> {
     SIGNATURES
         .iter()
         .filter(|s| s.name != "txt")
         .map(|s| s.name.to_string())
         .collect()
+}
+
+/// True for a type only the deep scan carves by default, so a front end can
+/// mark it as such in a type picker.
+pub fn is_deep_type(name: &str) -> bool {
+    DEEP_ONLY.iter().any(|d| d.eq_ignore_ascii_case(name))
 }
 
 /// Progress a carving pass publishes, so a front end can show it moving without
@@ -446,6 +547,8 @@ fn carve_one(
         deleted: false,
         encrypted: None,
         artifact: None,
+        content: Content::Full,
+        timestamp_source: None,
         rationale: Rationale {
             confidence: Confidence::Low,
             summary,
@@ -454,6 +557,19 @@ fn carve_one(
     };
     if let Some(m) = artifact {
         m.apply(&mut file);
+    }
+
+    // The one thing that can date a carved file is the file itself. Weaker than
+    // a filesystem timestamp and labelled as such, but on a volume with no
+    // filesystem left it is the only date there is.
+    if let Some((date, from)) = embedded_timestamp(source, start, file.size, &file.file_type) {
+        file.rationale.checks.push(Check::pass(
+            "embedded_timestamp",
+            format!("{date}, from {from}. Written by whatever produced the file, not by this \
+                     volume: it dates the content, not the file's life on this media."),
+        ));
+        file.created_utc = Some(date);
+        file.timestamp_source = Some(from.to_string());
     }
     Ok(Some(file))
 }
@@ -542,6 +658,342 @@ fn journal_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Op
         return Ok(None);
     };
     Ok((length <= budget).then_some(length))
+}
+
+// ---------------------------------------------------------------------------
+// Lengths for the deep scan's legacy formats
+// ---------------------------------------------------------------------------
+
+/// Bound an OLE2 compound file from its own allocation table.
+///
+/// The pre-XML Office formats — `.doc`, `.xls`, `.ppt`, `.msg` — are all one
+/// container, and it states no total length anywhere. What it does state is how
+/// many sectors its file allocation table occupies, and each of those maps
+/// `sector_size / 4` sectors of file. That product is an upper bound on the
+/// file rather than its exact end, which is why the result is reported as a
+/// bound: everything after the last used sector is slack inside the container,
+/// and the document still opens.
+fn ole2_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::{u16le, u32le};
+
+    const HEADER: u64 = 512;
+    if budget < HEADER {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, HEADER as usize)?;
+    // The byte-order mark is the one field that separates a real compound file
+    // from eight bytes that happen to match the magic.
+    if u16le(&head, 0x1C) != Some(0xFFFE) {
+        return Ok(None);
+    }
+    let shift = u16le(&head, 0x1E).unwrap_or(0);
+    if !(7..=16).contains(&shift) {
+        return Ok(None);
+    }
+    let sector_size = 1u64 << shift;
+    let fat_sectors = u32le(&head, 0x2C).unwrap_or(0) as u64;
+    if fat_sectors == 0 || fat_sectors > 1_000_000 {
+        return Ok(None);
+    }
+    let length = HEADER + fat_sectors * (sector_size / 4) * sector_size;
+    Ok((length <= budget).then_some(length))
+}
+
+/// A BMP states its own total size in the fifth byte onwards of its header.
+fn bmp_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::u32le;
+
+    const MIN: u64 = 54;
+    if budget < MIN {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, MIN as usize)?;
+    let length = u32le(&head, 2).unwrap_or(0) as u64;
+    // The DIB header size is fixed to one of a handful of values by the
+    // format's revisions, and checking it rejects the "BM" pairs that turn up
+    // in ordinary binary data.
+    let dib = u32le(&head, 14).unwrap_or(0);
+    if !matches!(dib, 12 | 40 | 52 | 56 | 64 | 108 | 124) {
+        return Ok(None);
+    }
+    if length < MIN || length > budget {
+        return Ok(None);
+    }
+    Ok(Some(length))
+}
+
+/// Follow a TIFF's image file directory chain to the furthest byte it refers to.
+///
+/// TIFF has no footer and declares no length; what it has is a chain of
+/// directories, each entry of which either holds its value inline or points at
+/// where the value lives. The end of the file is the end of the furthest thing
+/// anything points at, which is what this walks to.
+fn tiff_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::{u16le, u32le};
+
+    /// Bytes per TIFF field type, indexed by the type code. Type 0 does not
+    /// exist; the unknown types above 12 are treated as one byte, which
+    /// under-counts rather than over-counts.
+    const TYPE_SIZE: [u64; 13] = [1, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8];
+    /// A TIFF with more directories than this is damage, or a loop.
+    const MAX_DIRECTORIES: usize = 32;
+
+    if budget < 8 {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, 8)?;
+    let mut next = u32le(&head, 4).unwrap_or(0) as u64;
+    let mut end = 8u64;
+    let mut seen: Vec<u64> = Vec::new();
+
+    for _ in 0..MAX_DIRECTORIES {
+        if next < 8 || next + 2 > budget || seen.contains(&next) {
+            break;
+        }
+        seen.push(next);
+        let count_bytes = source.read_exact_at(start + next, 2)?;
+        let entries = u16le(&count_bytes, 0).unwrap_or(0) as u64;
+        if entries == 0 || entries > 4096 {
+            break;
+        }
+        let directory = 2 + entries * 12 + 4;
+        if next + directory > budget {
+            break;
+        }
+        end = end.max(next + directory);
+        // The entries and the pointer to the next directory that follows them,
+        // in one read.
+        let body = source.read_exact_at(start + next + 2, (entries * 12 + 4) as usize)?;
+        for e in 0..entries as usize {
+            let at = e * 12;
+            let (Some(kind), Some(count), Some(value)) = (
+                u16le(&body, at + 2),
+                u32le(&body, at + 4),
+                u32le(&body, at + 8),
+            ) else {
+                continue;
+            };
+            let size = TYPE_SIZE.get(kind as usize).copied().unwrap_or(1) * count as u64;
+            // Four bytes or fewer live in the entry itself; anything larger is
+            // out at `value`.
+            if size > 4 {
+                end = end.max(value as u64 + size);
+            }
+        }
+        next = u32le(&body, (entries * 12) as usize).unwrap_or(0) as u64;
+    }
+
+    if end < 8 || end > budget {
+        return Ok(None);
+    }
+    Ok(Some(end))
+}
+
+/// A 7z file is a 32-byte header, the packed streams, and a header at the end
+/// whose position and size the first header states exactly.
+fn sevenz_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::u64le;
+
+    const HEADER: u64 = 32;
+    if budget < HEADER {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, HEADER as usize)?;
+    let (Some(next_at), Some(next_size)) = (u64le(&head, 12), u64le(&head, 20)) else {
+        return Ok(None);
+    };
+    let length = HEADER
+        .checked_add(next_at)
+        .and_then(|l| l.checked_add(next_size))?;
+    Ok((length > HEADER && length <= budget).then_some(length))
+}
+
+/// A cabinet's header states the size of the whole cabinet.
+fn cab_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::u32le;
+
+    const HEADER: u64 = 36;
+    if budget < HEADER {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, HEADER as usize)?;
+    // Reserved fields that are zero in every cabinet ever written; they reject
+    // the stray "MSCF" that is not one.
+    if u32le(&head, 4) != Some(0) || u32le(&head, 12) != Some(0) {
+        return Ok(None);
+    }
+    let length = u32le(&head, 8).unwrap_or(0) as u64;
+    Ok((length >= HEADER && length <= budget).then_some(length))
+}
+
+/// The pre-Vista event log ends at the offset its header records for the
+/// end-of-file record, plus that record's fixed 40 bytes.
+fn evt_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::u32le;
+
+    const HEADER: u64 = 0x30;
+    const EOF_RECORD: u64 = 0x28;
+    if budget < HEADER {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, HEADER as usize)?;
+    // The header states its own size twice, at each end. Both must say 0x30.
+    if u32le(&head, 0) != Some(HEADER as u32) || u32le(&head, 0x2C) != Some(HEADER as u32) {
+        return Ok(None);
+    }
+    let end_offset = u32le(&head, 0x14).unwrap_or(0) as u64;
+    let length = end_offset + EOF_RECORD;
+    Ok((end_offset >= HEADER && length <= budget).then_some(length))
+}
+
+/// An Outlook store states where its own end is, in a field whose width and
+/// position depend on which of the two format generations it is.
+fn pst_length(source: &mut dyn Source, start: u64, budget: u64) -> Result<Option<u64>> {
+    use crate::source::{u16le, u32le, u64le};
+
+    const HEADER: u64 = 0x200;
+    if budget < HEADER {
+        return Ok(None);
+    }
+    let head = source.read_exact_at(start, HEADER as usize)?;
+    // wMagicClient: "SM" in every PST and OST.
+    if u16le(&head, 8) != Some(0x4D53) {
+        return Ok(None);
+    }
+    let version = u16le(&head, 0x0A).unwrap_or(0);
+    let length = match version {
+        // Unicode (Outlook 2003 and later): the root block starts at 0xB8 and
+        // ibFileEof is its second field.
+        v if v >= 23 => u64le(&head, 0xBC)?,
+        // ANSI (Outlook 97-2002), which is exactly the generation a drive with
+        // a long history is likely to be holding.
+        14 | 15 => u32le(&head, 0xAC)? as u64,
+        _ => return Ok(None),
+    };
+    Ok((length >= HEADER && length <= budget).then_some(length))
+}
+
+// ---------------------------------------------------------------------------
+// Dates out of a carved file's own bytes
+// ---------------------------------------------------------------------------
+
+/// The furthest into a file this looks for an embedded date. Every format here
+/// keeps its metadata at the front.
+const EMBEDDED_SCAN: u64 = 64 * 1024;
+
+/// Find a date inside a carved file's own content.
+///
+/// A carved file has no filesystem timestamp, because it was found in space no
+/// filesystem describes any more. Some formats carry one anyway: a camera
+/// writes the shot time into a JPEG, a PDF writer records when it produced the
+/// document, a ZIP keeps the modification time of each member. It is a weaker
+/// claim than a filesystem timestamp — the file says it, nothing corroborates
+/// it, and a photograph copied between six machines keeps the date of the
+/// original shot rather than of anything that happened on this drive — so it is
+/// a last resort, and the source is always reported alongside it so the claim
+/// can be read for what it is.
+fn embedded_timestamp(
+    source: &mut dyn Source,
+    start: u64,
+    length: u64,
+    file_type: &str,
+) -> Option<(String, &'static str)> {
+    let head = source
+        .read_exact_at(start, length.min(EMBEDDED_SCAN) as usize)
+        .ok()?;
+    match file_type {
+        "jpg" | "tif" => exif_date(&head).map(|d| (d, "EXIF date in the file's own bytes")),
+        "pdf" => pdf_creation_date(&head).map(|d| (d, "the PDF's /CreationDate")),
+        "zip" | "docx" | "xlsx" | "pptx" => {
+            zip_member_date(&head).map(|d| (d, "the ZIP member's MS-DOS date (local time)"))
+        }
+        _ => None,
+    }
+}
+
+/// Find an EXIF date, which is always written `YYYY:MM:DD HH:MM:SS`.
+///
+/// Matched as a pattern rather than by walking the TIFF directories EXIF is
+/// stored in: the shape is specific enough that a run of unrelated bytes does
+/// not take it, and the walk buys nothing a carved file needs.
+fn exif_date(head: &[u8]) -> Option<String> {
+    let mut best: Option<String> = None;
+    for w in head.windows(19) {
+        let digits = |i: usize| w[i].is_ascii_digit();
+        if !(0..4).chain(5..7).chain(8..10).all(digits) {
+            continue;
+        }
+        if !(11..13).chain(14..16).chain(17..19).all(digits) {
+            continue;
+        }
+        if w[4] != b':' || w[7] != b':' || w[10] != b' ' || w[13] != b':' || w[16] != b':' {
+            continue;
+        }
+        let Ok(s) = std::str::from_utf8(w) else {
+            continue;
+        };
+        let iso = format!("{}-{}-{}T{}Z", &s[0..4], &s[5..7], &s[8..10], &s[11..19]);
+        if !crate::deep::plausible_timestamp(&iso) {
+            continue;
+        }
+        // The oldest date in the file: a JPEG carries the shot time and often a
+        // later "digitised" or "modified" time beside it.
+        if best.as_ref().is_none_or(|b| iso < *b) {
+            best = Some(iso);
+        }
+    }
+    best
+}
+
+/// Read a PDF's `/CreationDate (D:YYYYMMDDHHmmSS...)`.
+fn pdf_creation_date(head: &[u8]) -> Option<String> {
+    let at = find(head, b"/CreationDate")?;
+    let rest = head.get(at..(at + 64).min(head.len()))?;
+    let d = find(rest, b"D:")? + 2;
+    let digits = rest.get(d..d + 14)?;
+    if !digits.iter().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let s = std::str::from_utf8(digits).ok()?;
+    let iso = format!(
+        "{}-{}-{}T{}:{}:{}Z",
+        &s[0..4],
+        &s[4..6],
+        &s[6..8],
+        &s[8..10],
+        &s[10..12],
+        &s[12..14]
+    );
+    crate::deep::plausible_timestamp(&iso).then_some(iso)
+}
+
+/// Read the MS-DOS date out of a ZIP's first local file header.
+///
+/// MS-DOS time has no timezone: it is whatever the clock of the machine that
+/// wrote the archive said. Reported as such rather than converted to a UTC it
+/// was never in.
+fn zip_member_date(head: &[u8]) -> Option<String> {
+    use crate::source::u16le;
+
+    if head.get(0..4)? != [b'P', b'K', 0x03, 0x04] {
+        return None;
+    }
+    let time = u16le(head, 10)?;
+    let date = u16le(head, 12)?;
+    let iso = format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        1980 + (date >> 9),
+        (date >> 5) & 0x0F,
+        date & 0x1F,
+        time >> 11,
+        (time >> 5) & 0x3F,
+        (time & 0x1F) * 2
+    );
+    // A zero date field renders as 1980-00-00, which is not a date.
+    if date & 0x1F == 0 || (date >> 5) & 0x0F == 0 {
+        return None;
+    }
+    crate::deep::plausible_timestamp(&iso).then_some(iso)
 }
 
 /// Stream forward from `start` looking for `footer`, returning the length of the
@@ -700,6 +1152,8 @@ fn text_result(index: usize, start: u64, length: u64, run: &[u8]) -> RecoveredFi
         deleted: false,
         encrypted: None,
         artifact: None,
+        content: Content::Full,
+        timestamp_source: None,
         rationale: Rationale {
             confidence: Confidence::Low,
             summary: format!(

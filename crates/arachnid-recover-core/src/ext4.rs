@@ -365,7 +365,17 @@ pub struct Scan {
 }
 
 /// Recover files from the inode tables, then from the journal.
-pub fn recover(source: &mut dyn Source, sb: &Superblock, deleted_only: bool) -> Result<Scan> {
+///
+/// `deep` adds the journal's *superseded* copies: inodes the live table still
+/// holds, but which the journal also holds an older version of. Those are
+/// reported as metadata-only — an earlier state of a file that still exists —
+/// and are noise on a standard scan, which is why they are behind the flag.
+pub fn recover(
+    source: &mut dyn Source,
+    sb: &Superblock,
+    deleted_only: bool,
+    deep: bool,
+) -> Result<Scan> {
     let mut unsupported = Vec::new();
     let mut notes = Vec::new();
 
@@ -489,9 +499,13 @@ pub fn recover(source: &mut dyn Source, sb: &Superblock, deleted_only: bool) -> 
     }
 
     // Pass 2: the journal, for inodes the live table has already reused.
-    match journal_inodes(source, sb, &inodes) {
-        Ok((stale, journal_notes)) => {
+    match journal_inodes(source, sb, &inodes, deep) {
+        Ok((stale, superseded, journal_notes)) => {
             notes.extend(journal_notes);
+            for inode in superseded {
+                let path = build_path(&names, &parents, inode.number);
+                files.push(superseded_record(files.len(), &inode, &path));
+            }
             for inode in stale {
                 if !inode.is_regular() {
                     continue;
@@ -758,6 +772,8 @@ fn assemble(
         deleted,
         encrypted,
         artifact: None,
+        content: crate::results::Content::Full,
+        timestamp_source: Some("filesystem metadata (ext4 inode)".into()),
         rationale: Rationale {
             confidence,
             summary,
@@ -772,8 +788,12 @@ fn journal_inodes(
     source: &mut dyn Source,
     sb: &Superblock,
     live: &HashMap<u32, Inode>,
-) -> Result<(Vec<Inode>, Vec<String>)> {
+    deep: bool,
+) -> Result<(Vec<Inode>, Vec<Inode>, Vec<String>)> {
     let mut notes = Vec::new();
+    // Journalled copies of inodes the live table still has, kept only in deep
+    // mode: an earlier state of a file that is still there.
+    let mut superseded: HashMap<u32, Inode> = HashMap::new();
 
     // The journal is an ordinary file; its inode says where it lives.
     let group = (sb.journal_inum - 1) / sb.inodes_per_group;
@@ -905,9 +925,21 @@ fn journal_inodes(
                             continue;
                         }
                         // Only what the live table has lost. A journalled copy
-                        // of an inode that is still live adds nothing and would
-                        // double every result.
-                        if live.get(&number).is_some_and(|l| !l.is_empty()) {
+                        // of an inode that is still live adds nothing to a
+                        // standard scan and would double every result.
+                        if let Some(current) = live.get(&number).filter(|l| !l.is_empty()) {
+                            // In deep mode it does add something, when it
+                            // differs: the file's metadata as it was before the
+                            // change the journal recorded.
+                            if deep && (current.mtime != inode.mtime || current.size != inode.size)
+                            {
+                                let keep = superseded
+                                    .get(&number)
+                                    .is_none_or(|held| inode.mtime < held.mtime);
+                                if keep {
+                                    superseded.insert(number, inode);
+                                }
+                            }
                             continue;
                         }
                         recovered.entry(number).or_insert(inode);
@@ -936,7 +968,158 @@ fn journal_inodes(
          table no longer holds",
         recovered.len()
     ));
-    Ok((recovered.into_values().collect(), notes))
+    if deep {
+        notes.push(format!(
+            "journal: {} superseded metadata state(s) for inodes the live table still holds",
+            superseded.len()
+        ));
+    }
+    Ok((
+        recovered.into_values().collect(),
+        superseded.into_values().collect(),
+        notes,
+    ))
+}
+
+/// An earlier state of a file that still exists, as the journal recorded it.
+///
+/// Metadata-only on purpose. The blocks this older inode points at have been
+/// through at least one rewrite since — that is what makes it superseded — so
+/// reading them would return whatever is there now, not the file as it was.
+/// What survives is the description: the size and the times it had before.
+fn superseded_record(index: usize, inode: &Inode, path: &str) -> RecoveredFile {
+    let mut f = crate::deep::metadata_record(
+        format!("ext4-journal-{index:06}"),
+        Method::Ext4Journal,
+        path.to_string(),
+        unix_to_rfc3339(inode.mtime as i64, 0),
+        "ext4 journal copy of the inode",
+        format!(
+            "the journal holds an earlier copy of inode {}: {} byte(s), last written {}. The live \
+             inode table has moved past this state. The blocks it describes have been rewritten \
+             at least once since, so this is the description of the file as it was, not the file.",
+            inode.number,
+            inode.size,
+            unix_to_rfc3339(inode.mtime as i64, 0).unwrap_or_else(|| inode.mtime.to_string())
+        ),
+        vec![Check::pass(
+            "journalled_copy_differs",
+            "this copy's size or modification time differs from the live inode of the same \
+             number, which is what makes it an earlier state rather than a duplicate",
+        )],
+    );
+    f.created_utc = unix_to_rfc3339(inode.ctime as i64, 0);
+    f.size = inode.size;
+    f
+}
+
+// ---------------------------------------------------------------------------
+// Deep scan: backup superblocks
+// ---------------------------------------------------------------------------
+
+/// Block groups that hold a superblock copy when the sparse_super feature is on:
+/// group 1 and every power of 3, 5 and 7.
+fn backup_groups(groups: u32) -> Vec<u32> {
+    let mut out = vec![1u32];
+    for base in [3u32, 5, 7] {
+        let mut g = base;
+        while g < groups {
+            out.push(g);
+            let Some(next) = g.checked_mul(base) else {
+                break;
+            };
+            g = next;
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out.retain(|g| *g < groups);
+    out
+}
+
+/// Read the superblock copies ext keeps in later block groups.
+///
+/// They are maintained for repair rather than for history, so most of the time
+/// they agree with the primary and the right thing to report is that they do.
+/// When one does not, it is describing the filesystem as it was at some earlier
+/// point — and its creation time is the oldest date this volume can offer about
+/// itself, which is exactly what an oldest-first view is for.
+pub fn backup_superblocks(
+    source: &mut dyn Source,
+    sb: &Superblock,
+) -> (Vec<RecoveredFile>, Vec<String>) {
+    let mut out = Vec::new();
+    let mut notes = Vec::new();
+
+    let primary = match source.read_exact_at(sb.base + SUPERBLOCK_OFFSET, 1024) {
+        Ok(b) => b,
+        Err(e) => {
+            notes.push(format!("backup superblocks: primary unreadable ({e:#})"));
+            return (out, notes);
+        }
+    };
+    let primary_write = u32le(&primary, 0x30).unwrap_or(0);
+
+    let groups = backup_groups(sb.groups());
+    let mut read = 0u32;
+    let mut divergent = 0u32;
+    for g in groups {
+        let block = sb.first_data_block as u64 + g as u64 * sb.blocks_per_group as u64;
+        // Group 0's superblock sits 1024 bytes into the volume; every copy sits
+        // at the start of its own group's first block.
+        let at = sb.block_offset(block);
+        let Ok(copy) = source.read_exact_at(at, 1024) else {
+            continue;
+        };
+        if u16le(&copy, 0x38) != Some(EXT4_MAGIC) {
+            continue;
+        }
+        read += 1;
+        let write_time = u32le(&copy, 0x30).unwrap_or(0);
+        let mkfs_time = u32le(&copy, 0x108).unwrap_or(0);
+        if write_time >= primary_write {
+            continue;
+        }
+        divergent += 1;
+
+        let mut f = crate::deep::metadata_record(
+            format!("ext4-backup-sb-{:06}", out.len()),
+            Method::Ext4BackupSuperblock,
+            format!("<backup superblock, block group {g}>"),
+            unix_to_rfc3339(write_time as i64, 0),
+            "ext4 backup superblock write time",
+            format!(
+                "the superblock copy in block group {g} was last written {}, before the primary's \
+                 {}. It describes the filesystem at that earlier point. The filesystem itself was \
+                 created {}.",
+                unix_to_rfc3339(write_time as i64, 0).unwrap_or_else(|| write_time.to_string()),
+                unix_to_rfc3339(primary_write as i64, 0)
+                    .unwrap_or_else(|| primary_write.to_string()),
+                unix_to_rfc3339(mkfs_time as i64, 0).unwrap_or_else(|| "unrecorded".into())
+            ),
+            vec![
+                Check::pass(
+                    "backup_superblock_valid",
+                    format!("the ext magic is present at block group {g}'s superblock copy"),
+                ),
+                Check::pass(
+                    "predates_primary",
+                    format!("its write time is {} seconds before the primary's", primary_write.saturating_sub(write_time)),
+                ),
+            ],
+        );
+        // The creation time is the oldest thing a filesystem knows about
+        // itself, and it is the honest floor on anything recovered from it.
+        f.created_utc = unix_to_rfc3339(mkfs_time as i64, 0)
+            .filter(|t| crate::deep::plausible_timestamp(t));
+        out.push(f);
+    }
+
+    notes.push(format!(
+        "backup superblocks: {read} copy/copies read, {divergent} describing a state older than \
+         the primary's"
+    ));
+    (out, notes)
 }
 
 #[cfg(test)]

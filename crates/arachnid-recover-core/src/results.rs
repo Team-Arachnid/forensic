@@ -69,6 +69,23 @@ pub enum Method {
     /// Found by scanning raw sectors for a file signature. No original name,
     /// path, or timestamp exists for a result found this way.
     SignatureCarve,
+    /// A USN journal record: evidence that a named file was created, written or
+    /// deleted at a stated time. The file's own data is not part of the record.
+    NtfsUsnJournal,
+    /// A `$FILE_NAME` attribute residue found in an `$LogFile` page, from a
+    /// transaction whose MFT record has since been reused.
+    NtfsLogFile,
+    /// An MFT record read out of `$MFTMirr` that the primary MFT no longer
+    /// holds in readable form.
+    NtfsMftMirror,
+    /// A backup superblock in a later ext block group, recording a filesystem
+    /// state the primary superblock has moved on from.
+    Ext4BackupSuperblock,
+    /// A Volume Shadow Copy: a point in time the volume kept a store for.
+    ShadowCopy,
+    /// The unused tail of a cluster still allocated to a live file, holding
+    /// bytes from whatever occupied that cluster before it.
+    SlackSpace,
 }
 
 impl Method {
@@ -79,11 +96,65 @@ impl Method {
             Method::Ext4Journal => "ext4 journal",
             Method::ApfsTree => "APFS tree",
             Method::SignatureCarve => "carved",
+            Method::NtfsUsnJournal => "USN journal",
+            Method::NtfsLogFile => "$LogFile",
+            Method::NtfsMftMirror => "$MFTMirr",
+            Method::Ext4BackupSuperblock => "ext4 backup sb",
+            Method::ShadowCopy => "shadow copy",
+            Method::SlackSpace => "slack space",
         }
     }
 
     pub fn is_carved(self) -> bool {
         matches!(self, Method::SignatureCarve)
+    }
+
+    /// True for the techniques only the deep scan runs, so a summary can say
+    /// which half of the results the extra hours bought.
+    pub fn is_deep(self) -> bool {
+        matches!(
+            self,
+            Method::NtfsUsnJournal
+                | Method::NtfsLogFile
+                | Method::NtfsMftMirror
+                | Method::Ext4BackupSuperblock
+                | Method::ShadowCopy
+                | Method::SlackSpace
+        )
+    }
+}
+
+/// How much of a file a result actually is.
+///
+/// The deep scan recovers three different things and they are not
+/// interchangeable: a file, a record that a file once existed, and a remnant of
+/// a file left in space something else now owns. Exporting the second as a
+/// zero-byte file or the third under a full filename would misrepresent both,
+/// so the distinction is carried on every result rather than inferred from the
+/// method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Content {
+    /// The result's extents hold the file's data, as far as the media gave it
+    /// back.
+    #[default]
+    Full,
+    /// Evidence that a file existed, with a name and a time — and no data. A
+    /// journal record, a backup superblock, a snapshot. There is nothing to
+    /// export, and nothing is exported.
+    MetadataOnly,
+    /// A remnant: real bytes off the media that are part of some file, with no
+    /// header, no end and no name.
+    Fragment,
+}
+
+impl Content {
+    pub fn label(self) -> &'static str {
+        match self {
+            Content::Full => "content",
+            Content::MetadataOnly => "metadata-only",
+            Content::Fragment => "fragment",
+        }
     }
 }
 
@@ -173,12 +244,48 @@ pub struct RecoveredFile {
     /// Defaulted so an index written before this field existed still loads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact: Option<String>,
+    /// Whether this result is a file, a record that a file existed, or a
+    /// remnant. Defaulted so an index written before the deep scan existed
+    /// still loads, and loads as what it was: full content.
+    #[serde(default, skip_serializing_if = "Content::is_full")]
+    pub content: Content,
+    /// Where the timestamps on this result came from, in words — the filesystem
+    /// record, a journal entry, a snapshot, or the file's own embedded
+    /// metadata. Absent when the result carries no timestamp at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp_source: Option<String>,
     pub rationale: Rationale,
+}
+
+impl Content {
+    /// Serde skip predicate: the default needs no room in the index.
+    fn is_full(&self) -> bool {
+        *self == Content::Full
+    }
 }
 
 impl RecoveredFile {
     pub fn confidence(&self) -> Confidence {
         self.rationale.confidence
+    }
+
+    /// The oldest timestamp established for this result, and therefore the one
+    /// that answers "how far back does this go".
+    ///
+    /// The oldest rather than the newest on purpose: a file created in 2011 and
+    /// last written in 2024 is evidence reaching back to 2011. All four fields
+    /// are RFC 3339 UTC with a `Z` suffix, written by the formatters at the
+    /// bottom of this file, so comparing them as strings is comparing them as
+    /// instants.
+    pub fn derived_timestamp(&self) -> Option<&str> {
+        [
+            self.created_utc.as_deref(),
+            self.modified_utc.as_deref(),
+            self.accessed_utc.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     /// Display name: the original path where one survives, the generated export
@@ -241,6 +348,14 @@ pub struct ScanResults {
     pub operator: String,
     pub filesystem_pass: bool,
     pub carve_pass: bool,
+    /// `standard` or `deep`. Defaulted so an index written before the deep scan
+    /// existed loads as what it was.
+    #[serde(default = "standard_depth")]
+    pub depth: String,
+    /// Present only on a deep scan: which extra techniques ran, what they found
+    /// and what the media said about its own recoverability.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deep: Option<crate::deep::DeepReport>,
     /// File types the carver was asked for, in the order given.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub carve_types: Vec<String>,
@@ -252,7 +367,69 @@ pub struct ScanResults {
     pub problems: Vec<String>,
 }
 
+fn standard_depth() -> String {
+    "standard".into()
+}
+
 impl ScanResults {
+    /// Everything that could be dated, oldest first.
+    ///
+    /// This is the deep scan's headline view. A result with no establishable
+    /// timestamp — most carved files — is absent rather than sorted to one end:
+    /// "undated" is not a date, and putting it first would make the oldest item
+    /// on the list something that is not the oldest item.
+    pub fn by_age(&self) -> Vec<&RecoveredFile> {
+        let mut dated: Vec<&RecoveredFile> = self
+            .files
+            .iter()
+            .filter(|f| f.derived_timestamp().is_some())
+            .collect();
+        dated.sort_by(|a, b| {
+            a.derived_timestamp()
+                .cmp(&b.derived_timestamp())
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        dated
+    }
+
+    /// The oldest dated result, if anything could be dated at all.
+    pub fn oldest(&self) -> Option<&RecoveredFile> {
+        self.by_age().into_iter().next()
+    }
+
+    /// The one line that answers "how far back can this go", with the technique
+    /// that produced the answer — or says plainly that nothing here can be
+    /// dated, which on a heavily-used drive is an ordinary outcome and not a
+    /// failure.
+    pub fn oldest_line(&self) -> String {
+        match self.oldest() {
+            Some(f) => format!(
+                "Oldest recoverable item found: {}, via {} ({}).",
+                f.derived_timestamp().unwrap_or("unknown"),
+                f.timestamp_source
+                    .as_deref()
+                    .unwrap_or_else(|| f.method.label()),
+                f.content.label()
+            ),
+            None => "Oldest recoverable item found: none — nothing recovered here carries a \
+                     timestamp that can be established."
+                .into(),
+        }
+    }
+
+    /// Counts by what a result actually is: files, records of files, remnants.
+    pub fn content_counts(&self) -> (usize, usize, usize) {
+        let mut c = (0, 0, 0);
+        for f in &self.files {
+            match f.content {
+                Content::Full => c.0 += 1,
+                Content::MetadataOnly => c.1 += 1,
+                Content::Fragment => c.2 += 1,
+            }
+        }
+        c
+    }
+
     pub fn counts(&self) -> (usize, usize, usize) {
         let mut c = (0, 0, 0);
         for f in &self.files {
@@ -290,7 +467,7 @@ impl ScanResults {
         s.push_str(&format!("Started     {}\n", self.started_utc));
         s.push_str(&format!("Finished    {}\n", self.finished_utc));
         s.push_str(&format!(
-            "Passes      {}{}{}\n\n",
+            "Passes      {}{}{}\n",
             if self.filesystem_pass {
                 "filesystem"
             } else {
@@ -303,6 +480,7 @@ impl ScanResults {
             },
             if self.carve_pass { "raw carving" } else { "" }
         ));
+        s.push_str(&format!("Depth       {}\n\n", self.depth));
 
         s.push_str("Filesystems\n");
         if self.filesystems.is_empty() {
@@ -333,6 +511,25 @@ impl ScanResults {
              Medium filesystem metadata found, data partly overwritten or truncated\n\
              Low    raw-carved: structurally valid, completeness unverified\n",
         );
+
+        let (full, metadata_only, fragments) = self.content_counts();
+        if metadata_only > 0 || fragments > 0 {
+            s.push_str(&format!(
+                "\nWhat the results are\n  \
+                 content        {full} — file data, recovered\n  \
+                 metadata-only  {metadata_only} — a record that a file existed, with no data\n  \
+                 fragment       {fragments} — a remnant in space another file now owns\n"
+            ));
+        }
+
+        if let Some(deep) = &self.deep {
+            s.push_str(&deep.summary_section());
+        }
+
+        s.push_str(&format!("\n{}\n", self.oldest_line()));
+        if self.oldest().is_some() {
+            s.push_str("  full list, oldest first: arachnid-recover list-results --oldest-first\n");
+        }
 
         let artifacts: Vec<(&str, usize)> = crate::artifacts::CLASSES
             .iter()
