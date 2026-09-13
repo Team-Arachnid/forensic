@@ -1,7 +1,7 @@
 # Arachnid Forensic — Usage Guide
 
 How to actually drive the tools. Every command and every block of output on this
-page was produced by the binary in this repository at version **0.1.1**; where a
+page was produced by the binary in this repository at version **0.1.3**; where a
 value would differ on your host (hashes, PIDs, timestamps) it is real output from
 a real run, not an illustration.
 

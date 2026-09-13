@@ -35,7 +35,7 @@ Verify before allowlisting. Do not allowlist by filename or path.
 |---|---|
 | Product | Arachnid Core (Arachnid Forensic suite) |
 | Binary | `arachnid-core` / `arachnid-core.exe` |
-| Version | 0.1.1 |
+| Version | 0.1.3 |
 | Linux signature | detached GPG, `.asc` alongside the binary |
 | Windows signature | Authenticode, SHA-256, RFC 3161 timestamped |
 
@@ -45,7 +45,7 @@ mirrored here at tag time. Prefer allowlisting by **code-signing certificate**
 a new rule. Allowlist by hash only if your tooling cannot do publisher rules.
 
 ```
-# 0.1.1 — fill in at release tag time from dist/*.sha256
+# 0.1.3 — fill in at release tag time from dist/*.sha256
 x86_64-unknown-linux-musl   <sha256>
 x86_64-pc-windows-msvc      <sha256>
 ```
