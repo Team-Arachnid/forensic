@@ -142,6 +142,12 @@ pub struct State {
     pub filesystem_pass: bool,
     pub carve_pass: bool,
     pub include_live: bool,
+    /// Deep scan: journal mining, shadow copies, backup metadata, slack space
+    /// and the expanded carving set. Hours rather than minutes.
+    pub deep_scan: bool,
+    /// Inside a deep scan, look for a Host Protected Area or Device
+    /// Configuration Overlay. Its own toggle, never carried in by `deep_scan`.
+    pub hpa_dco: bool,
     /// Carve types and whether each is selected.
     pub types: Vec<(String, bool)>,
     pub output: Input,
@@ -180,6 +186,8 @@ impl State {
             filesystem_pass: true,
             carve_pass: false,
             include_live: false,
+            deep_scan: false,
+            hpa_dco: false,
             types: recover::carve::known_types()
                 .into_iter()
                 .map(|t| {
@@ -283,10 +291,30 @@ impl State {
         THRESHOLDS[self.threshold.min(THRESHOLDS.len() - 1)]
     }
 
-    /// Rows in the configuration view's focus ring: three toggles, one row per
-    /// carve type, then the output directory.
+    /// Rows in the configuration view's focus ring: the pass toggles, one row
+    /// per carve type, then the output directory.
+    ///
+    /// The HPA/DCO row only exists while deep scan is on — it is meaningless
+    /// otherwise, and a toggle that does nothing is worse than an absent one.
     fn config_rows(&self) -> usize {
-        3 + self.types.len() + 1
+        self.toggles() + self.types.len() + 1
+    }
+
+    /// How many toggle rows the configuration view is currently showing.
+    fn toggles(&self) -> usize {
+        if self.deep_scan {
+            5
+        } else {
+            4
+        }
+    }
+
+    /// The deep techniques that will run, for the configuration view to list.
+    fn deep_options(&self) -> recover::DeepOptions {
+        recover::DeepOptions {
+            hpa_dco: self.hpa_dco,
+            ..recover::DeepOptions::default()
+        }
     }
 }
 
@@ -455,7 +483,7 @@ fn advance_to_config(app: &mut App) {
 
 fn config_key(app: &mut App, key: KeyEvent) -> bool {
     let rows = app.recover.config_rows();
-    let types_at = 3;
+    let types_at = app.recover.toggles();
     let output_at = rows - 1;
     match key.code {
         KeyCode::Char('j') | KeyCode::Down => super::step(&mut app.recover.config_field, 1, rows),
@@ -467,6 +495,17 @@ fn config_key(app: &mut App, key: KeyEvent) -> bool {
                 0 => s.filesystem_pass = !s.filesystem_pass,
                 1 => s.carve_pass = !s.carve_pass,
                 2 => s.include_live = !s.include_live,
+                3 => {
+                    s.deep_scan = !s.deep_scan;
+                    // The HPA/DCO row disappears with deep scan. Leaving the
+                    // cursor past the end of a shorter ring would put focus on
+                    // nothing.
+                    if !s.deep_scan {
+                        s.hpa_dco = false;
+                    }
+                    s.config_field = s.config_field.min(s.config_rows() - 1);
+                }
+                4 if s.deep_scan => s.hpa_dco = !s.hpa_dco,
                 f if f < output_at => {
                     let i = f - types_at;
                     s.types[i].1 = !s.types[i].1;
@@ -647,6 +686,12 @@ pub fn start(app: &mut App) {
         carve_pass: app.recover.carve_pass,
         carve_types: app.recover.selected_types(),
         deleted_only: !app.recover.include_live,
+        depth: if app.recover.deep_scan {
+            recover::Depth::Deep
+        } else {
+            recover::Depth::Standard
+        },
+        deep: app.recover.deep_options(),
         operator: app.saved.operator.clone(),
     };
 
@@ -1093,11 +1138,31 @@ fn render_config(frame: &mut Frame, area: Rect, app: &mut App) {
             "include live files",
             "off by default — live files are readable through the OS",
         ),
-        Line::raw(""),
-        Line::from(ui::dim(" carve types")),
+        toggle_line(
+            s.config_field == 3,
+            toggle(s.deep_scan),
+            "deep scan",
+            "journals, shadow copies, backup metadata, slack: hours, not minutes",
+        ),
     ];
+    if s.deep_scan {
+        lines.push(toggle_line(
+            s.config_field == 4,
+            toggle(s.hpa_dco),
+            "  HPA/DCO check",
+            "read-only probe for a hidden area at the end of the drive",
+        ));
+        lines.push(Line::from(ui::dim(format!(
+            "      techniques: {}",
+            s.deep_options().techniques().join(", ")
+        ))));
+    }
+    lines.push(Line::raw(""));
+    lines.push(Line::from(ui::dim(" carve types")));
+
+    let types_at = s.toggles();
     for (i, (name, on)) in s.types.iter().enumerate() {
-        let focused = s.config_field == 3 + i;
+        let focused = s.config_field == types_at + i;
         lines.push(Line::from(vec![
             Span::styled(
                 format!(
@@ -1493,6 +1558,8 @@ mod tests {
             deleted: true,
             encrypted: None,
             artifact: None,
+            content: Default::default(),
+            timestamp_source: None,
             rationale: Rationale {
                 confidence,
                 summary: "test".into(),

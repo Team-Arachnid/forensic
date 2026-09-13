@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-cli"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arachnid-core-cli",
@@ -103,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-collect"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arachnid-evidence",
@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-core-cli"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arachnid-collect",
@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-core-tui"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arachnid-collect",
@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-evidence"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "ed25519-dalek",
@@ -168,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-netcap"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "etherparse",
@@ -180,7 +180,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-recover-cli"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arachnid-evidence",
@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-recover-core"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arachnid-evidence",
@@ -212,7 +212,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-report"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arachnid-collect",
@@ -224,7 +224,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-sanitize-cli"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arachnid-evidence",
@@ -239,7 +239,7 @@ dependencies = [
 
 [[package]]
 name = "arachnid-sanitize-core"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arachnid-evidence",

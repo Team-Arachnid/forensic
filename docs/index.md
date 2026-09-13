@@ -103,4 +103,4 @@ container format, so the whole chain verifies with `arachnid-core verify`.
 - [GitHub wiki](https://github.com/Team-Arachnid/forensic/wiki) — the same pages, rendered by GitHub
 - [SOC allowlisting](SOC-ALLOWLISTING.html) — full behavioural disclosure for detection engineering
 
-Licensed MIT. Version documented: **0.1.1**.
+Licensed MIT. Version documented: **0.1.3**.

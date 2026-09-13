@@ -20,10 +20,10 @@ use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
 use arachnid_recover_core::{
-    carve, export,
+    carve, deep, export,
     results::{Confidence, ScanResults},
     source::{DeviceSource, ImageSource, Source},
-    Progress, ScanOptions,
+    DeepOptions, Depth, Progress, ScanOptions,
 };
 use clap::{Args, Parser, Subcommand};
 
@@ -54,6 +54,13 @@ pub const SUMMARY_FILE: &str = "summary.txt";
 metadata (NTFS MFT, ext4 inodes and journal) and by carving raw sectors for file signatures.\n\n\
 Read-only against the source. Output always goes to a separate directory you name, and every \
 exported file is hashed into a signed chain-of-custody log that `arachnid-core verify` checks.\n\n\
+`scan --depth deep` additionally mines filesystem journals, enumerates shadow copies, reads \
+backup metadata and examines slack space, and carves a wider set of legacy file formats. It is \
+for cases where the oldest recoverable material matters more than the time it takes. It does not \
+recover overwritten data — nothing does — and whether old data survives at all depends on how \
+much the drive has been used since, whether it is an SSD with TRIM enabled, and whether journals \
+and snapshots still cover the period in question. `--oldest-first` on list-results is the honest \
+answer to how far back a given drive actually goes.\n\n\
 Call logs, browser history and system logs are identified as they are found — by path where the \
 filesystem still held one, and by schema or file format where it did not — and are selected with \
 `--type call-log,browser-history,system-log`.\n\n\
@@ -124,7 +131,7 @@ struct ScanArgs {
     carve_pass: bool,
 
     /// Types the carving pass looks for, comma-separated.
-    /// Default: every type except txt, which matches too much on a real volume.
+    /// Default: the common types; --depth deep adds the legacy ones.
     #[arg(long, value_name = "LIST", value_delimiter = ',')]
     carve_types: Vec<String>,
 
@@ -133,6 +140,25 @@ struct ScanArgs {
     /// deleted ones an investigation is usually after.
     #[arg(long)]
     include_live: bool,
+
+    /// How hard to look: "standard" (default) or "deep".
+    ///
+    /// Deep adds journal mining, shadow-copy enumeration, backup metadata,
+    /// slack space and an expanded carving signature set. It takes
+    /// substantially longer — hours on a large drive — and is worth it when
+    /// recovering the oldest possible material matters more than speed.
+    #[arg(long, value_name = "LEVEL", default_value = "standard")]
+    depth: String,
+
+    /// Within a deep scan, also check for a Host Protected Area or Device
+    /// Configuration Overlay. Read-only, and off unless asked for.
+    #[arg(long)]
+    hpa_dco: bool,
+
+    /// Continue a scan that was cancelled, keeping the stages that finished.
+    /// Reads the results.json already in the output directory.
+    #[arg(long)]
+    resume: bool,
 
     /// Operator identity recorded in the results.
     #[arg(long, value_name = "NAME")]
@@ -175,6 +201,12 @@ struct ListArgs {
     /// Print the full scoring rationale for one result, by id.
     #[arg(long, value_name = "ID")]
     detail: Option<String>,
+
+    /// List results oldest first, with the timestamp and where it came from.
+    /// Results that carry no establishable timestamp are left out, because an
+    /// undated result is not the oldest one.
+    #[arg(long)]
+    oldest_first: bool,
 }
 
 #[derive(Args)]
@@ -377,24 +409,40 @@ fn same_media(device: &str, resolved: &Path, output: &Path) -> Result<Option<Str
 // ---------------------------------------------------------------------------
 
 fn cmd_scan(cli: &Cli, a: &ScanArgs) -> Result<u8> {
+    let depth = Depth::parse(&a.depth)
+        .ok_or_else(|| anyhow::anyhow!("unknown --depth {:?}: use standard or deep", a.depth))?;
+    if a.hpa_dco && !depth.is_deep() {
+        bail!("--hpa-dco is part of a deep scan; pass --depth deep with it");
+    }
+
     // The filesystem pass is the default and --carve-pass adds to it, rather
     // than replacing it: an operator who asks for more work should never
     // silently get less. `carve` is the subcommand for carving alone.
     let options = ScanOptions {
         filesystem_pass: !a.no_filesystem_pass,
         carve_pass: a.carve_pass,
-        carve_types: if a.carve_types.is_empty() {
-            carve::default_types()
-        } else {
+        carve_types: if !a.carve_types.is_empty() {
             a.carve_types.clone()
+        } else if depth.is_deep() {
+            // Older material is disproportionately in formats that have fallen
+            // out of use, so a deep scan that carved only the modern set would
+            // be working against its own purpose.
+            carve::deep_types()
+        } else {
+            carve::default_types()
         },
         deleted_only: !a.include_live,
+        depth,
+        deep: DeepOptions {
+            hpa_dco: a.hpa_dco,
+            ..DeepOptions::default()
+        },
         operator: a
             .operator
             .clone()
             .unwrap_or_else(arachnid_recover_core::default_operator),
     };
-    scan_and_write(cli, &a.input, &a.output, options)
+    scan_and_write(cli, &a.input, &a.output, options, a.resume)
 }
 
 fn cmd_carve(cli: &Cli, a: &CarveArgs) -> Result<u8> {
@@ -411,11 +459,18 @@ fn cmd_carve(cli: &Cli, a: &CarveArgs) -> Result<u8> {
             .operator
             .clone()
             .unwrap_or_else(arachnid_recover_core::default_operator),
+        ..Default::default()
     };
-    scan_and_write(cli, &a.input, &a.output, options)
+    scan_and_write(cli, &a.input, &a.output, options, false)
 }
 
-fn scan_and_write(cli: &Cli, input: &Path, output: &Path, options: ScanOptions) -> Result<u8> {
+fn scan_and_write(
+    cli: &Cli,
+    input: &Path,
+    output: &Path,
+    options: ScanOptions,
+    resume: bool,
+) -> Result<u8> {
     for t in &options.carve_types {
         if !carve::known_types()
             .iter()
@@ -452,13 +507,64 @@ fn scan_and_write(cli: &Cli, input: &Path, output: &Path, options: ScanOptions) 
     ctrlc::set_handler(move || handler.store(true, Ordering::Relaxed))
         .context("install interrupt handler")?;
 
-    let progress = Progress::default();
+    // A deep scan runs for hours. Everything the operator would want in order
+    // to decide not to start it is printed before it starts, not reported
+    // afterwards as an explanation of why it found nothing.
+    let results_path = output.join(RESULTS_FILE);
+    let previous = if resume {
+        match arachnid_recover_core::load_results(&results_path) {
+            Ok(p) => {
+                if !cli.json {
+                    println!(
+                        "Resuming from {} (scanned {}).",
+                        results_path.display(),
+                        p.started_utc
+                    );
+                }
+                Some(p)
+            }
+            Err(e) => {
+                eprintln!(
+                    "WARNING: --resume was given but {} could not be read ({e:#}); running the \
+                     whole scan.",
+                    results_path.display()
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     if !cli.json {
         println!("Scanning {} ({} bytes)…", source.label(), source.size());
+        println!(
+            "Depth: {}. Estimated {} — a rough figure from an assumed read rate; set \
+             ARACHNID_SCAN_MBPS to what this rig actually sees to sharpen it.",
+            options.depth.label(),
+            deep::human_duration(deep::estimate(source.size(), options.depth)),
+        );
+        if options.depth.is_deep() {
+            println!("Techniques: {}.", options.deep.techniques().join(", "));
+            for advisory in deep::advisories(source.as_mut(), &options.deep) {
+                println!("\n[{}] {}", advisory.kind, advisory.detail);
+            }
+            println!(
+                "\nNothing here recovers overwritten data. A deep scan exhausts the places old \
+                 data can still be and reports what is there, including nothing.\n"
+            );
+        }
     }
-    let results = arachnid_recover_core::scan(source.as_mut(), &options, &progress, &cancel)?;
 
-    let results_path = output.join(RESULTS_FILE);
+    let progress = Progress::default();
+    let results = arachnid_recover_core::resume(
+        source.as_mut(),
+        &options,
+        &progress,
+        &cancel,
+        previous.as_ref(),
+    )?;
+
     std::fs::write(&results_path, serde_json::to_vec_pretty(&results)?)
         .with_context(|| format!("write {}", results_path.display()))?;
     let summary_path = output.join(SUMMARY_FILE);
@@ -520,8 +626,15 @@ fn cmd_list(cli: &Cli, a: &ListArgs) -> Result<u8> {
         }
         println!("{}  {}", file.id, file.display_name());
         println!("  method      {}", file.method.label());
+        println!("  kind        {}", file.content.label());
         println!("  type        {}", file.file_type);
         println!("  size        {} bytes", file.size);
+        if let Some(t) = file.derived_timestamp() {
+            println!(
+                "  oldest time {t}  ({})",
+                file.timestamp_source.as_deref().unwrap_or("source unrecorded")
+            );
+        }
         if let Some(a) = &file.artifact {
             println!("  artifact    {a}");
         }
@@ -554,10 +667,58 @@ fn cmd_list(cli: &Cli, a: &ListArgs) -> Result<u8> {
     }
 
     let confidence = parse_confidence(&a.confidence)?;
-    let selected: Vec<_> = results.filter(&confidence, &a.types).collect();
+    let mut selected: Vec<_> = results.filter(&confidence, &a.types).collect();
+
+    if a.oldest_first {
+        // by_age() has already dropped the undated and ordered the rest; this
+        // keeps that order while applying the same filters as the normal view.
+        let order = results.by_age();
+        selected = order
+            .into_iter()
+            .filter(|f| {
+                (confidence.is_empty() || confidence.contains(&f.confidence()))
+                    && (a.types.is_empty() || a.types.iter().any(|t| f.matches_type(t)))
+            })
+            .collect();
+    }
 
     if cli.json {
         println!("{}", serde_json::to_string_pretty(&selected)?);
+        return Ok(outcome_code(&results));
+    }
+
+    if a.oldest_first {
+        println!("{}\n", results.oldest_line());
+        if selected.is_empty() {
+            println!(
+                "Nothing in {} carries a timestamp that could be established. That is the \
+                 ordinary outcome for a scan whose results are all raw-carved: a carved file has \
+                 no filesystem date, and not every format carries one of its own.",
+                a.input.display()
+            );
+            return Ok(outcome_code(&results));
+        }
+        println!(
+            "{:<22} {:<14} {:<8} {:<14} {:<14} NAME / PATH",
+            "OLDEST TIMESTAMP", "ID", "CONF", "KIND", "METHOD"
+        );
+        for f in &selected {
+            println!(
+                "{:<22} {:<14} {:<8} {:<14} {:<14} {}",
+                f.derived_timestamp().unwrap_or("-"),
+                f.id,
+                f.rationale.confidence.label(),
+                f.content.label(),
+                f.method.label(),
+                f.display_name()
+            );
+        }
+        println!(
+            "\n{} of {} result(s) could be dated. A timestamp is the oldest of the times on the \
+             result, and --detail <ID> says where it came from.",
+            selected.len(),
+            results.files.len()
+        );
         return Ok(outcome_code(&results));
     }
 

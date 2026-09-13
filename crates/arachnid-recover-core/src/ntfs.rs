@@ -20,7 +20,8 @@
 //!   can tell the difference, so a deleted file never scores `High` on the
 //!   strength of a clean read alone; see [`crate::ntfs`]'s scoring below.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{bail, Context, Result};
 
@@ -767,12 +768,646 @@ fn assemble(
         deleted,
         encrypted,
         artifact: None,
+        content: crate::results::Content::Full,
+        timestamp_source: Some("filesystem metadata (NTFS MFT record)".into()),
         rationale: Rationale {
             confidence,
             summary,
             checks,
         },
     })
+}
+
+// ---------------------------------------------------------------------------
+// Deep scan: journal mining
+// ---------------------------------------------------------------------------
+//
+// What the MFT holds is the volume as it is now. What the journals hold is what
+// the volume did — and a record of a delete survives the file's data, the file's
+// MFT record, and often the reuse of both. Mining them recovers no file content
+// at all; it recovers the fact that a file of a given name existed at a given
+// time and what happened to it. On a drive that has been in use since, that is
+// frequently the only thing left, and it is often older than anything the
+// standard scan can produce.
+
+/// Bytes read at a time when sweeping a volume for journal records.
+const JOURNAL_CHUNK: usize = 4 * 1024 * 1024;
+
+/// A USN record header is 60 bytes before the name; nothing shorter is one, and
+/// a record claiming more than this is not one either.
+const USN_HEADER: usize = 60;
+const USN_MAX_RECORD: u32 = 1024;
+
+/// MFT record number of `$LogFile`.
+const LOGFILE_RECORD: u64 = 2;
+/// MFT record number of `$MFTMirr`.
+const MFTMIRR_RECORD: u64 = 1;
+
+/// How many distinct names each mining pass will hold. A volume with a long
+/// journal history can carry hundreds of thousands of them, and an unbounded map
+/// is how a deep scan of a large drive turns into an out-of-memory kill three
+/// hours in.
+// ponytail: a flat cap that stops collecting once reached. If a case ever needs
+// the whole of a very long journal, spill to a temporary index instead of
+// raising this.
+const MAX_JOURNAL_ENTRIES: usize = 200_000;
+
+/// What the journals said about one name.
+struct JournalEntry {
+    name: String,
+    /// Oldest timestamp seen for it — the answer to "how far back".
+    oldest: String,
+    newest: String,
+    /// Union of the USN reason flags seen across every record for this name.
+    reasons: u32,
+    records: u32,
+}
+
+/// Mine `$UsnJrnl` and `$LogFile` for historical file operations.
+///
+/// Both are swept by content rather than by walking `$Extend` to the journal's
+/// own data stream. That is deliberate: the interesting records are the ones
+/// whose stream has since been trimmed and whose pages are now unallocated
+/// space, and those are unreachable from any structure that still points at
+/// anything. Every candidate is validated hard enough that a false positive has
+/// to be a byte sequence that is a well-formed record, with a name and four
+/// timestamps inside living memory.
+///
+/// Everything returned is metadata-only: there is no file content in a journal
+/// record and none is claimed.
+pub fn mine_journals(
+    source: &mut dyn Source,
+    geometry: &Geometry,
+    cancel: &AtomicBool,
+) -> Result<(Vec<RecoveredFile>, Vec<String>)> {
+    let mut notes = Vec::new();
+    let mut out = Vec::new();
+
+    let volume = volume_extent(source, geometry);
+    let usn = sweep_usn(source, volume, cancel)?;
+    notes.push(format!(
+        "USN journal: {} record(s) across the volume, {} distinct name(s)",
+        usn.values().map(|e| e.records as u64).sum::<u64>(),
+        usn.len()
+    ));
+    for (key, entry) in usn {
+        out.push(usn_result(out.len(), key, &entry));
+    }
+
+    match system_file_extents(source, geometry, LOGFILE_RECORD) {
+        Ok(extents) if !extents.is_empty() => {
+            let (found, pages) = sweep_logfile(source, &extents, cancel)?;
+            notes.push(format!(
+                "$LogFile: {pages} log page(s) read, {} distinct file name(s) recovered from \
+                 transaction records",
+                found.len()
+            ));
+            for ((parent, name), times) in found {
+                out.push(logfile_result(out.len(), parent, &name, &times));
+            }
+        }
+        Ok(_) => notes.push("$LogFile: the record maps no data; nothing to mine".into()),
+        Err(e) => notes.push(format!("$LogFile: not mined ({e:#})")),
+    }
+
+    Ok((out, notes))
+}
+
+/// The volume's own extent within the source, as far as the boot sector says.
+fn volume_extent(source: &dyn Source, geometry: &Geometry) -> Extent {
+    let declared = geometry
+        .total_sectors
+        .saturating_mul(geometry.bytes_per_sector as u64);
+    let available = source.size().saturating_sub(geometry.base);
+    Extent {
+        offset: geometry.base,
+        length: if declared == 0 {
+            available
+        } else {
+            declared.min(available)
+        },
+    }
+}
+
+/// Sweep an extent for USN_RECORD_V2 structures.
+///
+/// Keyed by file reference and name together, because a reference is reused
+/// once the record slot is and two different files can share one. Each key keeps
+/// the oldest and newest times seen and the union of the reasons, so a file with
+/// four hundred journal entries is one line in the results rather than four
+/// hundred.
+fn sweep_usn(
+    source: &mut dyn Source,
+    within: Extent,
+    cancel: &AtomicBool,
+) -> Result<BTreeMap<(u64, String), JournalEntry>> {
+    let mut found: BTreeMap<(u64, String), JournalEntry> = BTreeMap::new();
+    let mut buf = vec![0u8; JOURNAL_CHUNK + USN_MAX_RECORD as usize];
+    let end = within.offset.saturating_add(within.length);
+    let mut at = within.offset;
+
+    while at < end {
+        if cancel.load(Ordering::Relaxed) || found.len() >= MAX_JOURNAL_ENTRIES {
+            break;
+        }
+        let want = buf.len().min((end - at) as usize);
+        let n = source.read_at(at, &mut buf[..want])?;
+        if n == 0 {
+            break;
+        }
+        let window = &buf[..n];
+        // Records are 8-aligned within the journal stream, and the stream
+        // itself starts on a page boundary, so only 8-aligned offsets are
+        // candidates. That removes seven eighths of the work and, with it,
+        // seven eighths of the chances of a false positive.
+        for i in (0..n.saturating_sub(USN_HEADER)).step_by(8) {
+            let Some((reference, name, timestamp, reason)) = parse_usn(&window[i..]) else {
+                continue;
+            };
+            if found.len() >= MAX_JOURNAL_ENTRIES {
+                break;
+            }
+            let entry = found
+                .entry((reference, name.clone()))
+                .or_insert_with(|| JournalEntry {
+                    name,
+                    oldest: timestamp.clone(),
+                    newest: timestamp.clone(),
+                    reasons: 0,
+                    records: 0,
+                });
+            if timestamp < entry.oldest {
+                entry.oldest = timestamp.clone();
+            }
+            if timestamp > entry.newest {
+                entry.newest = timestamp;
+            }
+            entry.reasons |= reason;
+            entry.records += 1;
+        }
+        // Overlap by one maximum record so a record straddling the boundary is
+        // seen whole by the next window. A window too short to overlap is the
+        // last one, and advancing by all of it ends the loop rather than
+        // re-reading the same bytes for ever.
+        at += if n > USN_MAX_RECORD as usize {
+            (n - USN_MAX_RECORD as usize) as u64
+        } else {
+            n as u64
+        };
+    }
+    Ok(found)
+}
+
+/// Validate and read one USN_RECORD_V2 at the head of `b`.
+fn parse_usn(b: &[u8]) -> Option<(u64, String, String, u32)> {
+    let length = u32le(b, 0)?;
+    if length < USN_HEADER as u32 || length > USN_MAX_RECORD || length % 8 != 0 {
+        return None;
+    }
+    // Only version 2. Version 3 and 4 exist, carry 128-bit identifiers and a
+    // different layout, and are not what a volume's $J stream is written in.
+    if u16le(b, 4)? != 2 || u16le(b, 6)? != 0 {
+        return None;
+    }
+    let name_length = u16le(b, 56)? as usize;
+    let name_at = u16le(b, 58)? as usize;
+    if name_at != USN_HEADER || name_length == 0 || name_length % 2 != 0 {
+        return None;
+    }
+    if name_at + name_length > length as usize || name_at + name_length > b.len() {
+        return None;
+    }
+    let timestamp = filetime_to_rfc3339(u64le(b, 32)?)?;
+    if !crate::deep::plausible_timestamp(&timestamp) {
+        return None;
+    }
+    let reference = u64le(b, 8)? & 0x0000_FFFF_FFFF_FFFF;
+    let name = utf16_name(&b[name_at..name_at + name_length])?;
+    Some((reference, name, timestamp, u32le(b, 40)?))
+}
+
+/// Decode a UTF-16LE name, or refuse it.
+///
+/// A name is the strongest evidence that a candidate structure really is one, so
+/// the bar is deliberately high: a run of bytes that decodes to control
+/// characters or path separators is not a filename and the structure around it
+/// was not a record.
+fn utf16_name(raw: &[u8]) -> Option<String> {
+    let units: Vec<u16> = raw
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .copied()
+        .map(u16::from_le_bytes)
+        .collect();
+    let name = String::from_utf16(&units).ok()?;
+    if name.is_empty() || name.chars().count() > 255 {
+        return None;
+    }
+    if name
+        .chars()
+        .any(|c| c.is_control() || matches!(c, '/' | '\\' | '<' | '>' | '|' | '"' | '*' | '?'))
+    {
+        return None;
+    }
+    Some(name)
+}
+
+/// USN reason flags, in the order they read best in a sentence.
+const USN_REASONS: &[(u32, &str)] = &[
+    (0x0000_0100, "created"),
+    (0x0000_0200, "deleted"),
+    (0x0000_0001, "data overwritten"),
+    (0x0000_0002, "data extended"),
+    (0x0000_0004, "data truncated"),
+    (0x0000_1000, "renamed (old name)"),
+    (0x0000_2000, "renamed (new name)"),
+    (0x0000_0800, "security changed"),
+    (0x0000_8000, "basic info changed"),
+    (0x8000_0000, "closed"),
+];
+
+fn describe_reasons(reasons: u32) -> String {
+    let named: Vec<&str> = USN_REASONS
+        .iter()
+        .filter(|(bit, _)| reasons & bit != 0)
+        .map(|(_, name)| *name)
+        .collect();
+    if named.is_empty() {
+        format!("reason flags 0x{reasons:08X}")
+    } else {
+        named.join(", ")
+    }
+}
+
+fn usn_result(index: usize, key: (u64, String), entry: &JournalEntry) -> RecoveredFile {
+    let (reference, _) = key;
+    let deleted = entry.reasons & 0x0000_0200 != 0;
+    let mut f = crate::deep::metadata_record(
+        format!("usn-{index:06}"),
+        Method::NtfsUsnJournal,
+        entry.name.clone(),
+        Some(entry.oldest.clone()),
+        "USN journal record",
+        format!(
+            "the USN journal records {} operation(s) on a file named {:?} (MFT reference \
+             {reference}) between {} and {}: {}. {}",
+            entry.records,
+            entry.name,
+            entry.oldest,
+            entry.newest,
+            describe_reasons(entry.reasons),
+            if deleted {
+                "The journal says it was deleted; whether its data is still on the media is a \
+                 separate question this record cannot answer."
+            } else {
+                "The journal does not record a delete for it within the entries that survive."
+            }
+        ),
+        vec![
+            Check::pass(
+                "usn_record_valid",
+                format!(
+                    "{} version 2 record(s) with a consistent length, name offset and timestamp",
+                    entry.records
+                ),
+            ),
+            Check::pass(
+                "timestamp_from_journal",
+                format!(
+                    "{} is the earliest time the journal records for this name",
+                    entry.oldest
+                ),
+            ),
+            Check::fail(
+                "path_reconstructed",
+                "a USN record names the file and its parent's reference number, not its path. The \
+                 parent's own record has usually been reused by the time the child's data is \
+                 gone, so no path is claimed here.",
+            ),
+        ],
+    );
+    f.deleted = deleted;
+    f.accessed_utc = Some(entry.newest.clone());
+    f
+}
+
+/// The four `$FILE_NAME` timestamps, in the order the attribute stores them.
+struct FileNameTimes {
+    created: String,
+    modified: String,
+}
+
+/// Sweep `$LogFile` pages for `$FILE_NAME` attribute residues.
+///
+/// NTFS logs the before and after image of every metadata change, so a
+/// `$FILE_NAME` attribute written during a create, a rename or a delete sits in
+/// the log independently of the MFT record it belonged to. Once that record is
+/// reused the log page is the only place the old name and its timestamps still
+/// exist.
+fn sweep_logfile(
+    source: &mut dyn Source,
+    extents: &[Extent],
+    cancel: &AtomicBool,
+) -> Result<(BTreeMap<(u64, String), FileNameTimes>, u64)> {
+    let mut found: BTreeMap<(u64, String), FileNameTimes> = BTreeMap::new();
+    let mut pages = 0u64;
+    let mut buf = vec![0u8; JOURNAL_CHUNK];
+
+    for extent in extents {
+        let end = extent.offset.saturating_add(extent.length);
+        let mut at = extent.offset;
+        while at < end {
+            if cancel.load(Ordering::Relaxed) || found.len() >= MAX_JOURNAL_ENTRIES {
+                break;
+            }
+            let want = buf.len().min((end - at) as usize);
+            let n = source.read_at(at, &mut buf[..want])?;
+            if n == 0 {
+                break;
+            }
+            let window = &buf[..n];
+            pages += window
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|w| *w == b"RCRD" || *w == b"RSTR")
+                .count() as u64;
+            // $FILE_NAME attributes are 8-aligned within a log record's redo
+            // and undo data, the same as everywhere else in NTFS.
+            for i in (0..n.saturating_sub(0x42)).step_by(8) {
+                if found.len() >= MAX_JOURNAL_ENTRIES {
+                    break;
+                }
+                let Some((parent, name, times)) = parse_file_name_residue(&window[i..]) else {
+                    continue;
+                };
+                let seen = found.entry((parent, name)).or_insert(FileNameTimes {
+                    created: times.created.clone(),
+                    modified: times.modified.clone(),
+                });
+                if times.created < seen.created {
+                    seen.created = times.created;
+                }
+                if times.modified > seen.modified {
+                    seen.modified = times.modified;
+                }
+            }
+            at += n as u64;
+        }
+    }
+    Ok((found, pages))
+}
+
+/// Validate and read a `$FILE_NAME` attribute body at the head of `b`.
+///
+/// Four consecutive plausible FILETIMEs, a namespace in range, and a name that
+/// decodes cleanly: a run of unrelated bytes satisfying all of those at an
+/// 8-byte boundary is not something that happens by accident.
+fn parse_file_name_residue(b: &[u8]) -> Option<(u64, String, FileNameTimes)> {
+    let namespace = *b.get(0x41)?;
+    if namespace > 3 {
+        return None;
+    }
+    let chars = *b.get(0x40)? as usize;
+    if chars == 0 || 0x42 + chars * 2 > b.len() {
+        return None;
+    }
+    let parent_raw = u64le(b, 0)?;
+    // The top 16 bits are the parent's sequence number. Zero means the field was
+    // never a file reference.
+    if parent_raw >> 48 == 0 {
+        return None;
+    }
+    let mut times = Vec::with_capacity(4);
+    for at in [0x08, 0x10, 0x18, 0x20] {
+        let t = filetime_to_rfc3339(u64le(b, at)?)?;
+        if !crate::deep::plausible_timestamp(&t) {
+            return None;
+        }
+        times.push(t);
+    }
+    let name = utf16_name(b.get(0x42..0x42 + chars * 2)?)?;
+    Some((
+        parent_raw & 0x0000_FFFF_FFFF_FFFF,
+        name,
+        FileNameTimes {
+            created: times[0].clone(),
+            modified: times[1].clone(),
+        },
+    ))
+}
+
+fn logfile_result(index: usize, parent: u64, name: &str, times: &FileNameTimes) -> RecoveredFile {
+    let mut f = crate::deep::metadata_record(
+        format!("logfile-{index:06}"),
+        Method::NtfsLogFile,
+        name.to_string(),
+        Some(times.created.clone()),
+        "$LogFile $FILE_NAME record",
+        format!(
+            "a transaction in $LogFile carries a $FILE_NAME attribute for {name:?} under parent \
+             reference {parent}, created {} and last written {}. The MFT record it belonged to no \
+             longer presents this name, so the log page is where it survives.",
+            times.created, times.modified
+        ),
+        vec![
+            Check::pass(
+                "file_name_attribute_valid",
+                format!(
+                    "four timestamps between {} and {}, a namespace in range, and a name that \
+                     decodes as UTF-16",
+                    times.created, times.modified
+                ),
+            ),
+            Check::fail(
+                "path_reconstructed",
+                "the attribute names one parent reference. Resolving it to a path needs that \
+                 parent's MFT record, which on a volume where this residue is the last copy of \
+                 the name has generally been reused.",
+            ),
+        ],
+    );
+    f.created_utc = Some(times.created.clone());
+    f.modified_utc = Some(times.modified.clone());
+    f
+}
+
+// ---------------------------------------------------------------------------
+// Deep scan: backup and redundant metadata
+// ---------------------------------------------------------------------------
+
+/// Byte extents of a system file's unnamed `$DATA`, by MFT record number.
+///
+/// Records 0 to 15 are the metadata files and always live in the first run of
+/// `$MFT`, so they can be read from the boot sector's pointer without walking
+/// the table first.
+fn system_file_extents(
+    source: &mut dyn Source,
+    geometry: &Geometry,
+    record_number: u64,
+) -> Result<Vec<Extent>> {
+    let record_size = geometry.record_size as usize;
+    let at = geometry.cluster_offset(geometry.mft_cluster) + record_number * record_size as u64;
+    let mut buf = source
+        .read_exact_at(at, record_size)
+        .with_context(|| format!("read MFT record {record_number}"))?;
+    apply_fixups(&mut buf, geometry.bytes_per_sector as usize)
+        .with_context(|| format!("apply fixups to MFT record {record_number}"))?;
+    let record = parse_record(&buf, record_number)?
+        .with_context(|| format!("MFT record {record_number} is not a FILE record"))?;
+    let data = record
+        .data
+        .as_ref()
+        .with_context(|| format!("MFT record {record_number} has no unnamed $DATA"))?;
+
+    let mut extents = Vec::new();
+    let mut remaining = data.real_size;
+    for run in &data.runs {
+        if remaining == 0 {
+            break;
+        }
+        let span = run
+            .clusters
+            .saturating_mul(geometry.cluster_size())
+            .min(remaining);
+        if let Some(lcn) = run.lcn {
+            extents.push(Extent {
+                offset: geometry.cluster_offset(lcn),
+                length: span,
+            });
+        }
+        remaining -= span;
+    }
+    Ok(extents)
+}
+
+/// Check NTFS's redundant copies of its own metadata: the backup boot sector at
+/// the end of the volume, and `$MFTMirr`.
+///
+/// The mirror holds copies of the first MFT records. Where the primary copy of
+/// one of those records no longer reads back as a FILE record — a torn write, a
+/// bad sector, a partly overwritten table — the mirror's copy is the only
+/// description of that file left, and it is reported as one.
+pub fn backup_metadata(
+    source: &mut dyn Source,
+    geometry: &Geometry,
+) -> Result<(Vec<RecoveredFile>, Vec<String>)> {
+    let mut notes = Vec::new();
+    let mut out = Vec::new();
+    let record_size = geometry.record_size as usize;
+    let sector = geometry.bytes_per_sector as usize;
+
+    // The backup boot sector is the volume's last sector: total_sectors counts
+    // everything before it.
+    let backup_at = geometry.base
+        + geometry
+            .total_sectors
+            .saturating_mul(geometry.bytes_per_sector as u64);
+    match (
+        source.read_exact_at(geometry.base, sector),
+        source.read_exact_at(backup_at, sector),
+    ) {
+        (Ok(primary), Ok(backup)) if &backup[3..11] == b"NTFS    " => {
+            notes.push(if primary == backup {
+                "backup boot sector: present at the end of the volume and identical to the \
+                 primary"
+                    .into()
+            } else {
+                format!(
+                    "backup boot sector: present at offset {backup_at} and DIFFERENT from the \
+                     primary. One of the two describes a geometry this volume no longer has; the \
+                     primary was used for this scan."
+                )
+            });
+        }
+        (_, Ok(_)) => notes.push(
+            "backup boot sector: the volume's last sector is not an NTFS boot sector. If the \
+             primary is ever damaged there is no second copy to fall back on."
+                .into(),
+        ),
+        _ => notes.push("backup boot sector: could not be read".into()),
+    }
+
+    match system_file_extents(source, geometry, MFTMIRR_RECORD) {
+        Ok(extents) => {
+            let mut checked = 0u64;
+            let mut rescued = 0u64;
+            let mirror_records: u64 = extents.iter().map(|e| e.length).sum::<u64>()
+                / record_size.max(1) as u64;
+            for index in 0..mirror_records {
+                let Some(at) = extent_offset(&extents, index * record_size as u64) else {
+                    continue;
+                };
+                let Ok(mut mirror) = source.read_exact_at(at, record_size) else {
+                    continue;
+                };
+                if apply_fixups(&mut mirror, sector).is_err() {
+                    continue;
+                }
+                let Ok(Some(record)) = parse_record(&mirror, index) else {
+                    continue;
+                };
+                checked += 1;
+
+                // Is the primary copy of the same record readable?
+                let primary_at =
+                    geometry.cluster_offset(geometry.mft_cluster) + index * record_size as u64;
+                let primary_ok = source
+                    .read_exact_at(primary_at, record_size)
+                    .ok()
+                    .and_then(|mut b| {
+                        apply_fixups(&mut b, sector).ok()?;
+                        parse_record(&b, index).ok().flatten()
+                    })
+                    .is_some();
+                if primary_ok {
+                    continue;
+                }
+                let Some(name) = record.best_name() else {
+                    continue;
+                };
+                rescued += 1;
+                out.push(crate::deep::metadata_record(
+                    format!("mftmirr-{:06}", out.len()),
+                    Method::NtfsMftMirror,
+                    name.name.clone(),
+                    record.modified.clone(),
+                    "$MFTMirr copy of the MFT record",
+                    format!(
+                        "MFT record {index} does not read back as a FILE record from the primary \
+                         table, but $MFTMirr's copy does, and it names {:?}. The mirror is the \
+                         only surviving description of this entry.",
+                        name.name
+                    ),
+                    vec![Check::pass(
+                        "mirror_record_valid",
+                        "the mirror's copy passed its fixup check and parsed as a FILE record \
+                         where the primary did not",
+                    )],
+                ));
+            }
+            notes.push(format!(
+                "$MFTMirr: {checked} mirrored record(s) parsed, {rescued} of which the primary \
+                 table no longer holds in readable form"
+            ));
+        }
+        Err(e) => notes.push(format!("$MFTMirr: not read ({e:#})")),
+    }
+
+    Ok((out, notes))
+}
+
+/// Map a logical offset within a run of extents to a source offset.
+fn extent_offset(extents: &[Extent], logical: u64) -> Option<u64> {
+    let mut seen = 0u64;
+    for e in extents {
+        if logical < seen + e.length {
+            return Some(e.offset + (logical - seen));
+        }
+        seen += e.length;
+    }
+    None
 }
 
 /// Lowercase extension, or `bin` when a name carries none. Never guessed from

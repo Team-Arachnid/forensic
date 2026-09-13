@@ -4,7 +4,7 @@ Arachnid Core is built and maintained by the Arachnid team.
 
 | Contributor | GitHub | Area |
 | --- | --- | --- |
-| Shubham Choudhary | [@ch0udharyji](https://github.com/ch0udharyji) | Project lead — evidence container, collector, report, TUI, `arachnid-cli`, the Section 63 BSA certificate, release and install pipeline, CI |
+| Shubham Choudhary | [@ch0udharyji](https://github.com/ch0udharyji) | Project lead — evidence container, collector, report, TUI, `arachnid-cli`, the Section 63 BSA certificate, file recovery including the deep scan, release and install pipeline, CI |
 | Divyanshu | [@geekydivyanshu](https://github.com/geekydivyanshu) | Network capture (`arachnid-netcap`) and secure erasure (`arachnid-sanitize-core` / `-cli`) |
 | Shristy Paliwal | [@shristypaliwal](https://github.com/shristypaliwal) | Documentation — README, threat model, SOC allowlisting guide and the JSON Schemas |
 | Barbie Grover | [@BarbieGrover](https://github.com/BarbieGrover) | Documentation — the project wiki, the Pages site and the usage guide |
